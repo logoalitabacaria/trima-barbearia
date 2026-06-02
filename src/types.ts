@@ -122,5 +122,6 @@ export interface SystemParameters {
   address: string;
   phone: string;
   primaryColor?: string; // e.g. "#eab308" (yellow)
+  backgroundColor?: string; // e.g. "#000000" (black)
   logoUrl?: string; // customizable image URL
 }

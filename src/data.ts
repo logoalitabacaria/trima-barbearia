@@ -12,7 +12,9 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   defaultCommissionService: 0.50, // 50%
   defaultCommissionProduct: 0.10, // 10%
   address: "Rua Logo Ali, 777 - Anexo à Tabacaria",
-  phone: "(11) 98765-4321"
+  phone: "(11) 98765-4321",
+  primaryColor: "#eab308",
+  backgroundColor: "#000000"
 };
 
 export const INITIAL_USERS: User[] = [
@@ -26,7 +28,7 @@ export const INITIAL_USERS: User[] = [
     avatar: '👑',
     login: 'admin',
     password: 'Logoali123!',
-    permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL']
+    permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
   }
 ];
 

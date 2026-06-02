@@ -64,9 +64,70 @@ export default function BarberPanel({
   const [showManualComandaForm, setShowManualComandaForm] = useState(false);
   const [manualComandaCliId, setManualComandaCliId] = useState(users.find(u => u.role === 'CUSTOMER')?.id || '');
 
+  // Agenda Blocking/Closure states
+  const [blockType, setBlockType] = useState<'slot' | 'day'>('slot');
+  const [blockDate, setBlockDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [blockTime, setBlockTime] = useState('12:00');
+
   // Helpers
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
+
+  const handleCreateBlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockDate) {
+      alert('Selecione uma data para o bloqueio.');
+      return;
+    }
+    if (blockType === 'slot' && !blockTime) {
+      alert('Selecione um horário para o bloqueio.');
+      return;
+    }
+
+    const isFullDay = blockType === 'day';
+    const newBlock: Appointment = {
+      id: `block-${Date.now()}`,
+      customerId: 'BLOCKED_CUSTOMER',
+      customerName: isFullDay ? '🚫 DIA INTEIRO BLOQUEADO' : '🚫 HORÁRIO FECHADO',
+      customerPhone: 'N/A',
+      barberId: currentBarber.id,
+      barberName: currentBarber.name,
+      serviceId: isFullDay ? 'BLOCKED_FULL_DAY' : 'BLOCKED_SLOT',
+      serviceName: isFullDay ? 'Ausente (Dia Inteiro)' : 'Horário Desativado',
+      servicePrice: 0,
+      date: blockDate,
+      time: isFullDay ? '00:00' : blockTime,
+      status: 'SCHEDULED'
+    };
+
+    if (blockType === 'slot') {
+      const collision = appointments.some(
+        a => a.date === blockDate && a.time === blockTime && a.barberId === currentBarber.id && a.status === 'SCHEDULED' && a.serviceId !== 'BLOCKED_SLOT' && a.serviceId !== 'BLOCKED_FULL_DAY'
+      );
+      if (collision) {
+        if (!confirm('Já existe um cliente agendado para este horário. Deseja mesmo fechar este horário e sobrepor visualmente? (O cliente continuará cadastrado no sistema)')) {
+          return;
+        }
+      }
+    } else {
+      const collisionCount = appointments.filter(
+        a => a.date === blockDate && a.barberId === currentBarber.id && a.status === 'SCHEDULED' && a.serviceId !== 'BLOCKED_SLOT' && a.serviceId !== 'BLOCKED_FULL_DAY'
+      ).length;
+      if (collisionCount > 0) {
+        if (!confirm(`Já existem ${collisionCount} clientes agendados para este dia. Deseja mesmo fechar o dia inteiro e impedir novos agendamentos?`)) {
+          return;
+        }
+      }
+    }
+
+    onUpdateState('appointments', [...appointments, newBlock]);
+    alert('Bloqueio de agenda criado com sucesso!');
+  };
+
+  const handleRemoveBlock = (blockId: string) => {
+    if (!confirm('Deseja realmente reabrir a agenda para este período?')) return;
+    onUpdateState('appointments', appointments.filter(a => a.id !== blockId));
   };
 
   // REGISTER CLIENTS DIRECTLY BY THE BARBER
@@ -326,7 +387,18 @@ export default function BarberPanel({
   );
 
   const appointmentsForBarber = appointments.filter(
-    a => a.barberId === currentBarber.id && a.status === 'SCHEDULED'
+    a =>
+      a.barberId === currentBarber.id &&
+      a.status === 'SCHEDULED' &&
+      a.serviceId !== 'BLOCKED_SLOT' &&
+      a.serviceId !== 'BLOCKED_FULL_DAY'
+  );
+
+  const blockedSlotsForBarber = appointments.filter(
+    a =>
+      a.barberId === currentBarber.id &&
+      a.status === 'SCHEDULED' &&
+      (a.serviceId === 'BLOCKED_SLOT' || a.serviceId === 'BLOCKED_FULL_DAY')
   );
 
   const activeComandaObj = comandas.find(c => c.id === selectedComandaId);
@@ -794,49 +866,172 @@ export default function BarberPanel({
 
       {/* SUB-TAB 2: MINHA AGENDA HOJE */}
       {activeSubTab === 'agenda' && (
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold font-mono text-zinc-400 uppercase tracking-wider block">
-            Seus Atendimentos Agendados Ativos
-          </h3>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fadeIn">
+          {/* Column 1 & 2: Active Customer Appointments */}
+          <div className="xl:col-span-2 space-y-4">
+            <h3 className="text-xs font-bold font-mono text-zinc-400 uppercase tracking-widest block mb-2">
+              Seus Atendimentos Agendados Ativos
+            </h3>
 
-          {appointmentsForBarber.length === 0 ? (
-            <div className="bg-[#101012] border border-zinc-800 p-8 rounded-xl text-center text-zinc-500 text-xs text-zinc-400">
-              ☕ Nenhuma reserva de corte pendente para você na fila de agendamento hoje.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {appointmentsForBarber.map(apt => (
-                <div key={apt.id} className="bg-[#101012] border border-zinc-800 rounded-xl p-4 flex flex-col justify-between gap-4">
-                  <div>
-                    <div className="flex justify-between items-start">
-                      <span className="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-950 border border-zinc-850 px-2 py-0.5 rounded">
-                        ID: {apt.id.slice(-5)}
-                      </span>
-                      <span className="font-mono text-yellow-500 font-bold text-xs bg-yellow-500/10 px-2 py-0.5 border border-yellow-500/20 rounded flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        {apt.time}
-                      </span>
+            {appointmentsForBarber.length === 0 ? (
+              <div className="bg-[#101012] border border-zinc-800 rounded-xl p-8 text-center text-zinc-500 text-xs text-zinc-400">
+                ☕ Nenhuma reserva de corte pendente para você na fila de agendamento hoje.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {appointmentsForBarber.map(apt => (
+                  <div key={apt.id} className="bg-[#101012] border border-zinc-800 rounded-xl p-4 flex flex-col justify-between gap-4">
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-950 border border-zinc-850 px-2 py-0.5 rounded">
+                          ID: {apt.id.slice(-5)}
+                        </span>
+                        <span className="font-mono text-yellow-500 font-bold text-xs bg-yellow-500/10 px-2 py-0.5 border border-yellow-500/20 rounded flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          {apt.time}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-left">
+                        <span className="text-2xl block mb-1">👤</span>
+                        <h4 className="font-bold text-white text-sm">{apt.customerName}</h4>
+                        <p className="text-xs text-yellow-500 font-semibold mt-1">Serviço: {apt.serviceName}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">{apt.customerPhone ? `WhatsApp: ${apt.customerPhone}` : 'Sem telefone informado.'}</p>
+                        <p className="text-[11px] font-mono text-zinc-500">Data agendada: {apt.date}</p>
+                      </div>
                     </div>
 
-                    <div className="mt-3 text-left">
-                      <span className="text-2xl block mb-1">👤</span>
-                      <h4 className="font-bold text-white text-sm">{apt.customerName}</h4>
-                      <p className="text-xs text-yellow-500 font-semibold mt-1">Serviço: {apt.serviceName}</p>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">{apt.customerPhone ? `WhatsApp: ${apt.customerPhone}` : 'Sem telefone informado.'}</p>
-                      <p className="text-[11px] font-mono text-zinc-500">Data agendada: {apt.date}</p>
-                    </div>
+                    <button
+                      onClick={() => handleStartComandaForAppointment(apt)}
+                      className="w-full bg-yellow-500 text-black hover:bg-yellow-600 font-bold text-xs py-2.5 rounded-lg transition duration-150 uppercase cursor-pointer"
+                    >
+                      Iniciar Atendimento (Lançar Comanda)
+                    </button>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-                  <button
-                    onClick={() => handleStartComandaForAppointment(apt)}
-                    className="w-full bg-yellow-500 text-black hover:bg-yellow-600 font-bold text-xs py-2.5 rounded-lg transition duration-150 uppercase"
-                  >
-                    Iniciar Atendimento (Lançar Comanda)
-                  </button>
+          {/* Column 3: Agenda Blocking & Closures Panel */}
+          <div className="xl:col-span-1 space-y-6">
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-4">
+              <h3 className="text-xs font-bold font-mono text-yellow-500 uppercase tracking-widest block border-b border-zinc-850 pb-2">
+                🚫 Bloquear / Fechar Agenda
+              </h3>
+              <p className="text-[10px] text-zinc-400">
+                Bloqueie parte do seu dia para descanso, almoço ou feche um dia inteiro quando não puder comparecer para impedir novas reservas online.
+              </p>
+
+              <form onSubmit={handleCreateBlock} className="space-y-4 text-xs">
+                {/* Block type selector */}
+                <div>
+                  <label className="text-[9px] text-zinc-400 font-mono uppercase block mb-1.5">Modo de Bloqueio</label>
+                  <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 border border-zinc-850 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setBlockType('slot')}
+                      className={`py-1.5 rounded-md font-mono text-[10px] uppercase font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        blockType === 'slot'
+                          ? 'bg-yellow-500 text-black'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      🕒 Horário
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBlockType('day')}
+                      className={`py-1.5 rounded-md font-mono text-[10px] uppercase font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        blockType === 'day'
+                          ? 'bg-yellow-500 text-black'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      📅 Dia Inteiro
+                    </button>
+                  </div>
                 </div>
-              ))}
+
+                {/* Date Input */}
+                <div>
+                  <label className="text-[9px] text-zinc-400 font-mono uppercase block mb-1">Selecione o Dia</label>
+                  <input
+                    type="date"
+                    required
+                    value={blockDate}
+                    onChange={(e) => setBlockDate(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                {/* Time Input (only shown if type is 'slot') */}
+                {blockType === 'slot' && (
+                  <div>
+                    <label className="text-[9px] text-zinc-400 font-mono uppercase block mb-1">Horário Especial de Pausa</label>
+                    <input
+                      type="time"
+                      required
+                      value={blockTime}
+                      onChange={(e) => setBlockTime(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-red-650 hover:bg-red-700 text-white font-bold text-xs uppercase font-mono rounded-lg transition duration-150 cursor-pointer shadow border border-red-900/30"
+                >
+                  Confirmar Bloqueio
+                </button>
+              </form>
             </div>
-          )}
+
+            {/* List of Blocked Periods */}
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-4">
+              <h3 className="text-xs font-bold font-mono text-zinc-400 uppercase tracking-widest block border-b border-zinc-850 pb-2">
+                Suas Ausências / Horários Fechados
+              </h3>
+
+              {blockedSlotsForBarber.length === 0 ? (
+                <p className="text-[11px] text-zinc-500 font-mono text-center py-4">
+                  Não há bloqueios criados para a sua agenda neste momento.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                  {blockedSlotsForBarber.map(block => (
+                    <div
+                      key={block.id}
+                      className="bg-zinc-950 border border-zinc-850/60 p-3 rounded-lg flex justify-between items-center gap-2"
+                    >
+                      <div className="text-left">
+                        <span className="inline-block text-[8px] px-1 py-0.2 rounded font-extrabold uppercase bg-red-950/40 text-red-400 border border-red-900/40 mb-1">
+                          {block.serviceId === 'BLOCKED_FULL_DAY' ? 'Dia Completo' : 'Horário'}
+                        </span>
+                        <p className="text-white font-bold text-xs font-mono">
+                          {block.date.split('-').reverse().join('/')}
+                        </p>
+                        {block.serviceId === 'BLOCKED_SLOT' && (
+                          <p className="text-[10px] text-zinc-400 font-mono">
+                            Às {block.time}
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleRemoveBlock(block.id)}
+                        className="text-zinc-500 hover:text-red-400 transition p-1.5 bg-[#121214] rounded border border-zinc-850 cursor-pointer text-xs"
+                        title="Reabrir Agenda / Remover Bloqueio"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

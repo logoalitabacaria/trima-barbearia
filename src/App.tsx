@@ -15,6 +15,7 @@ import AdminPanel from './components/AdminPanel';
 import BarberPanel from './components/BarberPanel';
 import CustomerPanel from './components/CustomerPanel';
 import CashierPanel from './components/CashierPanel';
+import FacilitadorPanel from './components/FacilitadorPanel';
 
 export default function App() {
   // Global State (persisted inside localStorage)
@@ -212,6 +213,9 @@ export default function App() {
         :root {
           --primary-color: ${state.parameters?.primaryColor || '#eab308'};
         }
+        body, html, .min-h-screen, .bg-black {
+          background-color: ${state.parameters?.backgroundColor || '#000000'} !important;
+        }
         .bg-yellow-500 {
           background-color: var(--primary-color) !important;
         }
@@ -331,6 +335,14 @@ export default function App() {
                   💼 Balcão do Caixa
                 </button>
                 <button
+                  onClick={() => setActiveTab('facilitador')}
+                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                    activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  ⚡ Apoio & Facilitador
+                </button>
+                <button
                   onClick={() => setActiveTab('cliente')}
                   className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
                     activeTab === 'cliente' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
@@ -343,32 +355,74 @@ export default function App() {
 
             {/* BARBER TABS */}
             {currentUser.role === 'BARBER' && (
-              <button
-                onClick={() => setActiveTab('barbeiro')}
-                className="px-4 py-2 rounded-lg font-bold font-mono uppercase bg-yellow-500 text-black cursor-default"
-              >
-                🧔 Minha Agenda & Comandas
-              </button>
+              <>
+                <button
+                  onClick={() => setActiveTab('barbeiro')}
+                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                    activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  🧔 Minha Agenda & Comandas
+                </button>
+                {currentUser.permissions?.includes('DAILY_FACILITATOR') && (
+                  <button
+                    onClick={() => setActiveTab('facilitador')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    ⚡ Apoio & Facilitador
+                  </button>
+                )}
+              </>
             )}
 
             {/* CASHIER TABS */}
             {currentUser.role === 'CASHIER' && (
-              <button
-                onClick={() => setActiveTab('caixa')}
-                className="px-4 py-2 rounded-lg font-bold font-mono uppercase bg-yellow-500 text-black cursor-default"
-              >
-                💼 Caixa & Faturamento
-              </button>
+              <>
+                <button
+                  onClick={() => setActiveTab('caixa')}
+                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                    activeTab === 'caixa' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  💼 Caixa & Faturamento
+                </button>
+                {(currentUser.permissions?.includes('DAILY_FACILITATOR') || currentUser.permissions === undefined) && (
+                  <button
+                    onClick={() => setActiveTab('facilitador')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    ⚡ Apoio & Facilitador
+                  </button>
+                )}
+              </>
             )}
 
             {/* CUSTOMER TABS */}
             {currentUser.role === 'CUSTOMER' && (
-              <button
-                onClick={() => setActiveTab('cliente')}
-                className="px-4 py-2 rounded-lg font-bold font-mono uppercase bg-yellow-500 text-black cursor-default"
-              >
-                🧔 Meu Agendamento Online
-              </button>
+              <>
+                <button
+                  onClick={() => setActiveTab('cliente')}
+                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                    activeTab === 'cliente' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  🧔 Meu Agendamento Online
+                </button>
+                {currentUser.permissions?.includes('DAILY_FACILITATOR') && (
+                  <button
+                    onClick={() => setActiveTab('facilitador')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
+                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    ⚡ Apoio & Facilitador
+                  </button>
+                )}
+              </>
             )}
           </nav>
 
@@ -432,6 +486,14 @@ export default function App() {
                 appointments={state.appointments}
                 subscriptions={state.subscriptions}
                 parameters={state.parameters}
+                onUpdateState={handleUpdateState}
+              />
+            )}
+
+            {activeTab === 'facilitador' && (currentUser.permissions?.includes('DAILY_FACILITATOR') || currentUser.role === 'ADMIN') && (
+              <FacilitadorPanel
+                currentUser={currentUser}
+                users={state.users}
                 onUpdateState={handleUpdateState}
               />
             )}

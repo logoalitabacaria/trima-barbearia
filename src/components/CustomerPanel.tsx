@@ -34,8 +34,84 @@ export default function CustomerPanel({
   const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
   const [bookingServiceId, setBookingServiceId] = useState(services[0]?.id || '');
   const [bookingBarberId, setBookingBarberId] = useState(barbers[0]?.id || '');
-  const [bookingDate, setBookingDate] = useState('2026-05-27');
-  const [bookingTime, setBookingTime] = useState('14:30');
+  const [bookingDate, setBookingDate] = useState(() => {
+    const today = new Date();
+    const padDay = today.getDate().toString().padStart(2, '0');
+    const padMonth = (today.getMonth() + 1).toString().padStart(2, '0');
+    return `${today.getFullYear()}-${padMonth}-${padDay}`;
+  });
+  const [bookingTime, setBookingTime] = useState('');
+  const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
+
+  const MONTH_NAMES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+
+  // Helpers to check slots
+  const generateAvailableSlots = (dateString: string, barberId: string) => {
+    if (!parameters.openTime || !parameters.closeTime) return [];
+    const slots: string[] = [];
+    try {
+      const [startH, startM] = parameters.openTime.split(':').map(Number);
+      const [endH, endM] = parameters.closeTime.split(':').map(Number);
+      let currentMin = startH * 60 + startM;
+      const endMin = endH * 60 + endM;
+      const step = 30; // 30-minute interval is standard
+
+      while (currentMin < endMin) {
+        const h = Math.floor(currentMin / 60);
+        const m = currentMin % 60;
+        const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        slots.push(timeStr);
+        currentMin += step;
+      }
+    } catch (err) {
+      console.error("Error generating slots", err);
+    }
+    return slots;
+  };
+
+  const isSlotBooked = (date: string, time: string, barberId: string) => {
+    return appointments.some(
+      apt =>
+        apt.date === date &&
+        apt.barberId === barberId &&
+        apt.status !== 'CANCELLED' &&
+        (apt.time === time || apt.serviceId === 'BLOCKED_FULL_DAY')
+    );
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const getCalendarDays = () => {
+    const year = currentMonthDate.getFullYear();
+    const month = currentMonthDate.getMonth();
+    
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const days: { dayNum: number | null; dateString: string | null }[] = [];
+    
+    for (let i = 0; i < firstDayIndex; i++) {
+      days.push({ dayNum: null, dateString: null });
+    }
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      const padDay = d.toString().padStart(2, '0');
+      const padMonth = (month + 1).toString().padStart(2, '0');
+      const dateString = `${year}-${padMonth}-${padDay}`;
+      days.push({ dayNum: d, dateString });
+    }
+    
+    return days;
+  };
 
   // Helpers
   const formatCurrency = (val: number) => {
@@ -62,13 +138,13 @@ export default function CustomerPanel({
       return;
     }
 
-    // Verify shop bounds
-    const timeVal = parseInt(bookingTime.replace(':', ''));
-    const startVal = parseInt(parameters.openTime.replace(':', ''));
-    const closeVal = parseInt(parameters.closeTime.replace(':', ''));
+    if (!bookingTime) {
+      alert('Por favor, selecione um horário de atendimento disponível na lista.');
+      return;
+    }
 
-    if (timeVal < startVal || timeVal > closeVal) {
-      alert(`Erro: A barbearia funciona de ${parameters.openTime} até ${parameters.closeTime}. Escolha outro horário!`);
+    if (isSlotBooked(bookingDate, bookingTime, selectedBarber.id)) {
+      alert('Desculpe, este horário já está reservado. Por favor, escolha outro horário livre.');
       return;
     }
 
@@ -277,42 +353,155 @@ export default function CustomerPanel({
           {/* STEP 3: Confirm date & time */}
           <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-4">
             <h3 className="text-xs font-bold font-mono uppercase text-yellow-500 border-b border-zinc-850 pb-2 mb-4">
-              3. Data & Horário
+              3. Visualização em Calendário & Horário
             </h3>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Escolha o Dia</label>
-                <input
-                  type="date"
-                  required
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full bg-[#1C1C1F] border border-[#27272A] rounded-lg px-3 py-2 text-xs text-white uppercase font-mono"
-                />
+              {/* Custom Interative Monthly Calendar Grid */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Selecione o Dia no Calendário</label>
+                <div className="bg-[#0A0A0C] border border-zinc-850 p-3 rounded-xl space-y-3">
+                  {/* Calendar controller header */}
+                  <div className="flex justify-between items-center text-xs font-bold uppercase font-mono">
+                    <button
+                      type="button"
+                      onClick={handlePrevMonth}
+                      className="p-1 px-2.5 bg-zinc-900 border border-zinc-855 rounded hover:text-white hover:bg-zinc-800 transition text-zinc-400 cursor-pointer"
+                    >
+                      &larr;
+                    </button>
+                    <span className="text-zinc-100 text-[11px] font-bold tracking-tight">
+                      {MONTH_NAMES[currentMonthDate.getMonth()]} {currentMonthDate.getFullYear()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleNextMonth}
+                      className="p-1 px-2.5 bg-zinc-900 border border-zinc-855 rounded hover:text-white hover:bg-zinc-800 transition text-zinc-400 cursor-pointer"
+                    >
+                      &rarr;
+                    </button>
+                  </div>
+
+                  {/* Calendar Week Days Columns Headers */}
+                  <div className="grid grid-cols-7 gap-1 text-center text-[9px] text-zinc-500 font-mono font-bold border-b border-zinc-900 pb-1">
+                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, idx) => (
+                      <span key={idx}>{day}</span>
+                    ))}
+                  </div>
+
+                  {/* Days grid layout cells */}
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {getCalendarDays().map((dayCell, idx) => {
+                      if (dayCell.dayNum === null || !dayCell.dateString) {
+                        return <div key={idx} />;
+                      }
+
+                      const isSelected = bookingDate === dayCell.dateString;
+                      const parsedCellDate = new Date(dayCell.dateString + 'T23:59:59');
+                      const todayBoundary = new Date();
+                      todayBoundary.setHours(0, 0, 0, 0);
+                      const isPast = parsedCellDate < todayBoundary;
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isPast}
+                          onClick={() => {
+                            if (dayCell.dateString) {
+                              setBookingDate(dayCell.dateString);
+                              setBookingTime(''); // Force reselection of time slot for new date
+                            }
+                          }}
+                          className={`h-7 w-full text-[10px] rounded transition-all font-mono font-semibold flex items-center justify-center ${
+                            isPast
+                              ? 'text-zinc-700 cursor-not-allowed bg-transparent'
+                              : isSelected
+                                ? 'bg-yellow-500 text-black font-extrabold shadow-sm'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer'
+                          }`}
+                        >
+                          {dayCell.dayNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Escolha o Horário</label>
-                <input
-                  type="time"
-                  required
-                  value={bookingTime}
-                  onChange={(e) => setBookingTime(e.target.value)}
-                  className="w-full bg-[#1C1C1F] border border-[#27272A] rounded-lg px-3 py-2 text-xs text-white font-mono"
-                />
-                <p className="text-[9px] text-zinc-500 italic mt-1 text-left">Horário de funcionamento: de {parameters.openTime} até {parameters.closeTime}.</p>
+              {/* Dynamic Time Grid Selector */}
+              <div className="space-y-2 border-t border-zinc-900 pt-3">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] text-zinc-400 font-mono block uppercase">Horários Disponíveis (Livre)</label>
+                  {bookingDate && (
+                    <span className="text-[9px] bg-yellow-500/10 text-yellow-500 font-mono px-2 py-0.5 rounded font-bold">
+                      Dia {bookingDate.split('-').reverse().join('/')}
+                    </span>
+                  )}
+                </div>
+
+                {(() => {
+                  const slots = generateAvailableSlots(bookingDate, bookingBarberId);
+                  if (slots.length === 0) {
+                    return (
+                      <div className="text-[10px] text-zinc-500 italic font-mono bg-[#0A0A0C] border border-zinc-900 p-2 text-center rounded">
+                        Sem parâmetros válidos de horário comercial.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-4 gap-1.5 max-h-[150px] overflow-y-auto pr-1">
+                      {slots.map(slot => {
+                        const isBooked = isSlotBooked(bookingDate, slot, bookingBarberId);
+                        const isSelected = bookingTime === slot;
+
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            disabled={isBooked}
+                            onClick={() => setBookingTime(slot)}
+                            className={`py-2 text-[10px] font-mono rounded border transition-all text-center ${
+                              isBooked
+                                ? 'bg-zinc-950/40 border-zinc-900 text-zinc-600 line-through cursor-not-allowed text-opacity-50'
+                                : isSelected
+                                  ? 'bg-yellow-500 border-yellow-500 text-black font-bold shadow-md scale-[1.03]'
+                                  : 'bg-zinc-900/70 border-zinc-850 hover:border-yellow-500/40 hover:bg-zinc-855 text-zinc-300 cursor-pointer'
+                            }`}
+                            title={isBooked ? 'Ocupado' : `Disponível às ${slot}`}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Caption / legend indicator */}
+                <div className="flex items-center gap-3 text-[9px] text-zinc-500 font-mono mt-2 pt-1">
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                    <span>Livre</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-800 border border-zinc-850 line-through"></span>
+                    <span>Ocupado / Reservado</span>
+                  </span>
+                </div>
               </div>
 
-              <div className="pt-4 border-t border-zinc-850 text-left">
-                <span className="text-[9px] text-zinc-500 uppercase font-mono block mb-1">Local do serviço</span>
+              {/* Informative Shop Block */}
+              <div className="pt-3 border-t border-zinc-850 text-left space-y-1">
+                <span className="text-[9px] text-zinc-500 uppercase font-mono block">Cadeira / Local</span>
                 <p className="text-xs font-bold text-white leading-tight">{parameters.shopName}</p>
-                <p className="text-[10px] text-zinc-400 mt-0.5">{parameters.address}</p>
+                <p className="text-[10px] text-zinc-400 leading-tight">{parameters.address}</p>
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-sm py-3 rounded-lg cursor-pointer transition duration-150 uppercase tracking-wider mt-4 shadow"
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-xs py-3 rounded-xl cursor-pointer transition-all uppercase tracking-wider mt-4 shadow"
               >
                 Confirmar Agendamento Online
               </button>

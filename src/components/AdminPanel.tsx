@@ -36,7 +36,7 @@ export default function AdminPanel({
   onResetDatabase
 }: AdminPanelProps) {
   // Toggle sections inside Admin
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'comissoes' | 'cadastros' | 'acessos' | 'parametros' | 'relatorios'>('comissoes');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'comissoes' | 'cadastros' | 'acessos' | 'parametros' | 'relatorios' | 'fechamento'>('comissoes');
   const [isDraggingLogo, setIsDraggingLogo] = useState(false);
 
   // Form states
@@ -93,6 +93,14 @@ export default function AdminPanel({
     return d.toISOString().split('T')[0];
   });
   const [reportEndDate, setReportEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Fechamento de Caixa Filter & Cost States
+  const [closingPeriod, setClosingPeriod] = useState<'diario' | 'semanal' | 'mensal' | 'personalizado'>('diario');
+  const [closingStartDate, setClosingStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [closingEndDate, setClosingEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [closingExpenseInput, setClosingExpenseInput] = useState('0');
+  const [closingNotes, setClosingNotes] = useState('');
+  const [liquidatedBarbers, setLiquidatedBarbers] = useState<Record<string, boolean>>({});
 
   // Category CRUD states
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -278,11 +286,11 @@ export default function AdminPanel({
     // Build standard permissions based on role
     let customPerms: string[] = [];
     if (usrRole === 'ADMIN') {
-      customPerms = ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL'];
+      customPerms = ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR'];
     } else if (usrRole === 'BARBER') {
       customPerms = ['MANAGE_APPOINTMENTS', 'EDIT_COMANDAS'];
     } else if (usrRole === 'CASHIER') {
-      customPerms = ['CHECKOUT_COMANDAS', 'EDIT_COMANDAS'];
+      customPerms = ['CHECKOUT_COMANDAS', 'EDIT_COMANDAS', 'DAILY_FACILITATOR'];
     } else {
       customPerms = ['CUSTOMER_PORTAL'];
     }
@@ -693,7 +701,15 @@ export default function AdminPanel({
             activeAdminSubTab === 'relatorios' ? 'bg-yellow-500 text-black font-bold' : 'bg-[#151518] hover:bg-zinc-850 text-zinc-400'
           }`}
         >
-          📊 Relatórios & Faturamento
+          📊 Relatórios
+        </button>
+        <button
+          onClick={() => setActiveAdminSubTab('fechamento')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wider uppercase font-mono transition duration-150 cursor-pointer ${
+            activeAdminSubTab === 'fechamento' ? 'bg-yellow-500 text-black font-bold' : 'bg-[#151518] hover:bg-zinc-850 text-zinc-400'
+          }`}
+        >
+          📥 Fechamento de Caixa
         </button>
       </div>
 
@@ -1362,6 +1378,7 @@ export default function AdminPanel({
                     <th className="pb-2 text-left font-semibold">Agenda</th>
                     <th className="pb-2 text-left font-semibold">Comandas</th>
                     <th className="pb-2 text-left font-semibold">Caixa</th>
+                    <th className="pb-2 text-center font-semibold">Apoio/Facilitador</th>
                     <th className="pb-2 text-right font-semibold">Ação</th>
                   </tr>
                 </thead>
@@ -1438,6 +1455,15 @@ export default function AdminPanel({
                           checked={u.permissions?.includes('CHECKOUT_COMANDAS') || u.role === 'ADMIN'}
                           disabled={u.role === 'ADMIN'}
                           onChange={() => handleToggleTabPermission(u.id, 'CHECKOUT_COMANDAS')}
+                          className="rounded border-zinc-800 bg-[#121214] text-yellow-500 focus:ring-0 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={u.permissions?.includes('DAILY_FACILITATOR') || u.role === 'ADMIN'}
+                          disabled={u.role === 'ADMIN'}
+                          onChange={() => handleToggleTabPermission(u.id, 'DAILY_FACILITATOR')}
                           className="rounded border-zinc-800 bg-[#121214] text-yellow-500 focus:ring-0 cursor-pointer"
                         />
                       </td>
@@ -1715,7 +1741,7 @@ export default function AdminPanel({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Cor de Destaque / Tema (Hex)</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-3">
                   <input
                     type="color"
                     value={parameters.primaryColor || '#eab308'}
@@ -1730,7 +1756,24 @@ export default function AdminPanel({
                     className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
                   />
                 </div>
-                <p className="text-[9px] text-zinc-500 italic mt-1">Defina a cor principal do sistema (padrão é o amarelo #eab308).</p>
+
+                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Cor do Fundo do Sistema (Hex)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={parameters.backgroundColor || '#000000'}
+                    onChange={(e) => handleUpdateParameter('backgroundColor', e.target.value)}
+                    className="h-10 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
+                  />
+                  <input
+                    type="text"
+                    value={parameters.backgroundColor || '#000000'}
+                    onChange={(e) => handleUpdateParameter('backgroundColor', e.target.value)}
+                    placeholder="#000000"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-500 italic mt-1.5">Defina a cor principal dos botões e textos e a cor sólida aplicada ao fundo de tela do sistema.</p>
               </div>
 
               <div>
@@ -2241,6 +2284,269 @@ export default function AdminPanel({
                       );
                     })}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TAB 6: CASHIER CLOSING & PARTNER SETTLEMENT DELIBERATION */}
+      {activeAdminSubTab === 'fechamento' && (() => {
+        const getFilteredComandasForClosing = () => {
+          let start: Date;
+          let end: Date = new Date();
+          end.setHours(23, 59, 59, 999);
+
+          if (closingPeriod === 'diario') {
+            start = new Date();
+            start.setHours(0, 0, 0, 0);
+          } else if (closingPeriod === 'semanal') {
+            start = new Date();
+            start.setDate(start.getDate() - 7);
+            start.setHours(0, 0, 0, 0);
+          } else if (closingPeriod === 'mensal') {
+            start = new Date();
+            start.setDate(start.getDate() - 30);
+            start.setHours(0, 0, 0, 0);
+          } else {
+            start = closingStartDate ? new Date(closingStartDate + 'T00:00:00') : new Date(0);
+            const parsedEnd = closingEndDate ? new Date(closingEndDate + 'T23:59:59') : new Date();
+            end = parsedEnd;
+          }
+
+          return closedComandas.filter(c => {
+            if (!c.completedAt) return false;
+            const compDate = new Date(c.completedAt);
+            return compDate >= start && compDate <= end;
+          });
+        };
+
+        const filteredCmds = getFilteredComandasForClosing();
+        const totalRevenueVal = filteredCmds.reduce((sum, c) => sum + c.total, 0);
+        const totalCommissionsVal = filteredCmds.reduce((sum, c) => sum + (c.commissionAmount || 0), 0);
+        const netProfitVal = totalRevenueVal - totalCommissionsVal;
+        const parsedExpenses = parseFloat(closingExpenseInput) || 0;
+        const finalNetProfitVal = netProfitVal - parsedExpenses;
+        const totalTicketsVal = filteredCmds.length;
+
+        const barberClosingReport = users
+          .filter(u => u.role === 'BARBER')
+          .map(b => {
+            const bCmds = filteredCmds.filter(c => c.barberId === b.id);
+            const billing = bCmds.reduce((sum, c) => sum + c.total, 0);
+            const commission = bCmds.reduce((sum, c) => sum + (c.commissionAmount || 0), 0);
+            return {
+              barber: b,
+              count: bCmds.length,
+              billing,
+              commission,
+              net: billing - commission,
+            };
+          })
+          .filter(bp => bp.count > 0);
+
+        return (
+          <div className="space-y-6 text-left animate-fadeIn">
+            <div className="bg-[#101012] border border-zinc-800 p-6 rounded-2xl space-y-2">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-yellow-500 font-mono">
+                📥 Conciliação & Fechamento de Caixa
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Calcule o fechamento financeiro do período, organize os repasses devidos aos barbeiros parceiros e filtre os resultados com detalhamento de custos operacionais e margem de lucro final.
+              </p>
+            </div>
+
+            {/* Filter Criteria */}
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-2xl space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-zinc-300">
+                1. Critérios de Filtragem & Período do Caixa
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Período de Análise</label>
+                  <select
+                    value={closingPeriod}
+                    onChange={(e) => setClosingPeriod(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white uppercase font-mono cursor-pointer"
+                  >
+                    <option value="diario">De Hoje (Diário)</option>
+                    <option value="semanal">Últimos 7 Dias (Semanal)</option>
+                    <option value="mensal">Últimos 30 Dias (Mensal)</option>
+                    <option value="personalizado">Intervalo Personalizado</option>
+                  </select>
+                </div>
+
+                {closingPeriod === 'personalizado' && (
+                  <>
+                    <div>
+                      <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Data Inicial</label>
+                      <input
+                        type="date"
+                        value={closingStartDate}
+                        onChange={(e) => setClosingStartDate(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Data Final</label>
+                      <input
+                        type="date"
+                        value={closingEndDate}
+                        onChange={(e) => setClosingEndDate(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Gastos Operacionais e Insumos adicionais (R$)</label>
+                  <input
+                    type="number"
+                    value={closingExpenseInput}
+                    min="0"
+                    onChange={(e) => setClosingExpenseInput(e.target.value)}
+                    placeholder="Ex: 150.00 (Insumos, tabacaria, faxina, etc)"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Calculations Balance Grid Dashboard */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl">
+                <span className="text-[9px] text-zinc-500 font-mono uppercase block">Faturamento Bruto</span>
+                <span className="text-sm lg:text-base font-bold font-mono text-white mt-1 block">{formatCurrency(totalRevenueVal)}</span>
+                <span className="text-[9px] text-zinc-500 font-mono italic">{totalTicketsVal} comanda(s) pagas</span>
+              </div>
+
+              <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl">
+                <span className="text-[9px] text-zinc-500 font-mono uppercase text-amber-500 block">Repasse (Parceiros)</span>
+                <span className="text-sm lg:text-base font-bold font-mono text-amber-500 mt-1 block">-{formatCurrency(totalCommissionsVal)}</span>
+                <span className="text-[9px] text-zinc-500 font-mono italic font-semibold">Serviços prestados</span>
+              </div>
+
+              <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl">
+                <span className="text-[9px] text-zinc-500 font-mono uppercase text-orange-400 block">Outros Custos / Gastos</span>
+                <span className="text-sm lg:text-base font-bold font-mono text-orange-400 mt-1 block">-{formatCurrency(parsedExpenses)}</span>
+                <span className="text-[9px] text-zinc-500 font-mono italic">Insumos extras do período</span>
+              </div>
+
+              <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl">
+                <span className="text-[9px] text-zinc-505 font-mono uppercase text-yellow-500 block">Lucro p/ Barbearia</span>
+                <span className="text-sm lg:text-base font-bold font-mono text-yellow-500 mt-1 block">{formatCurrency(netProfitVal)}</span>
+                <span className="text-[9px] text-zinc-500 font-mono italic">Bruto menos comissões</span>
+              </div>
+
+              <div className="col-span-2 lg:col-span-1 bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-xl">
+                <span className="text-[9px] text-yellow-500 font-mono font-bold uppercase block tracking-wider">LUCRO FINAL LÍQUIDO</span>
+                <span className="text-sm lg:text-base font-extrabold font-mono text-white mt-1 block">{formatCurrency(finalNetProfitVal)}</span>
+                <span className="text-[9px] text-yellow-500/70 font-mono italic">Saldo real pós-despesas</span>
+              </div>
+            </div>
+
+            {/* Repasse settlement details block */}
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-zinc-850 pb-2 flex-wrap gap-2">
+                <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase">
+                  2. Demonstrativo de Acerto e Resgates por Barbeiro (Parcerias)
+                </h4>
+                <div className="text-[10px] font-mono text-zinc-400">
+                  Total Geral a Pagar aos Parceiros: <span className="text-amber-500 font-bold">{formatCurrency(totalCommissionsVal)}</span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto text-xs">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-850 text-zinc-400 font-mono text-[9px]">
+                      <th className="pb-2 text-left font-semibold">Profissional</th>
+                      <th className="pb-2 text-center font-semibold">Atendimentos</th>
+                      <th className="pb-2 text-right font-semibold">Captação Bruta</th>
+                      <th className="pb-2 text-right font-semibold text-amber-500">Repasse Devido (Comissão)</th>
+                      <th className="pb-2 text-right font-semibold">Net Retido Casa</th>
+                      <th className="pb-2 text-right font-semibold">Ação / Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-850">
+                    {barberClosingReport.map(bp => {
+                      const isLiquidated = !!liquidatedBarbers[bp.barber.id];
+                      return (
+                        <tr key={bp.barber.id} className="hover:bg-zinc-900/10 transition">
+                          <td className="py-3 font-semibold text-white flex items-center gap-2">
+                            <span className="text-xl bg-zinc-950 border border-zinc-850 p-1 rounded-md">{bp.barber.avatar || '🧔'}</span>
+                            <div>
+                              <p>{bp.barber.name}</p>
+                              <p className="text-[9px] text-zinc-500 font-mono lowercase">{bp.barber.email}</p>
+                            </div>
+                          </td>
+                          <td className="py-3 text-center font-mono text-zinc-300">{bp.count} serviços finalizados</td>
+                          <td className="py-3 text-right font-mono text-zinc-300">{formatCurrency(bp.billing)}</td>
+                          <td className="py-3 text-right font-mono text-amber-500 font-bold">{formatCurrency(bp.commission)}</td>
+                          <td className="py-3 text-right font-mono text-emerald-500 font-semibold">{formatCurrency(bp.net)}</td>
+                          <td className="py-3 text-right font-mono">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLiquidatedBarbers(prev => ({
+                                  ...prev,
+                                  [bp.barber.id]: !prev[bp.barber.id]
+                                }));
+                              }}
+                              className={`px-3 py-1 rounded text-[9px] uppercase font-bold tracking-wider font-mono cursor-pointer transition ${
+                                isLiquidated
+                                  ? 'bg-[#151518] text-emerald-500 border border-emerald-500/20 font-bold'
+                                  : 'bg-yellow-500 hover:bg-yellow-600 text-black font-extrabold'
+                              }`}
+                            >
+                              {isLiquidated ? '✓ Pago / Liquidado' : '💸 Resgatar / Marcar Pago'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {barberClosingReport.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-zinc-500 font-mono text-xs">Sem vendas ou repasses registrados para o ciclo de datas selecionadas.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Close transaction form report */}
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-2xl space-y-4">
+              <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase">
+                3. Finalização Oficial do Período de Caixa
+              </h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Notas e Observações do Fechamento</label>
+                  <textarea
+                    value={closingNotes}
+                    onChange={(e) => setClosingNotes(e.target.value)}
+                    placeholder="Ex: Conciliado sem divergências de caixa. Repasses de comissão transferidos aos profissionais em 29/05."
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-[#27272A] rounded-xl px-3 py-2 text-xs text-white uppercase font-mono placeholder:text-zinc-500"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center pt-2 flex-wrap gap-4">
+                  <div className="text-[10px] text-zinc-500 font-mono font-semibold">
+                    * Este fechamento consolidou todas as comandas concluídas.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.print();
+                    }}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs py-2 px-4 rounded-xl select-none font-mono tracking-wider transition uppercase border border-zinc-800 cursor-pointer"
+                  >
+                    🖨️ Imprimir Fechamento de Caixa
+                  </button>
                 </div>
               </div>
             </div>
