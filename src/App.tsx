@@ -9,20 +9,20 @@ import {
 } from 'lucide-react';
 import { getSavedState, saveState } from './data';
 import { User, UserRole, Service, Product, LoyaltyPlan, CustomerSubscription, Appointment, Comanda, SystemParameters } from './types';
-import { loadStateFromFirestore, saveDocumentToFirestore, deleteDocumentFromFirestore, clearDatabaseToProduction } from './firebase';
+import { loadStateFromFirestore, saveDocumentToFirestore, deleteDocumentFromFirestore, clearDatabaseToProduction, subscribeToFirestoreState } from './firebase';
 import LoginScreen from './components/LoginScreen';
 import AdminPanel from './components/AdminPanel';
 import BarberPanel from './components/BarberPanel';
 import CustomerPanel from './components/CustomerPanel';
 import CashierPanel from './components/CashierPanel';
-import FacilitadorPanel from './components/FacilitadorPanel';
+import ManualModal from './components/ManualModal';
 
 export default function App() {
   // Global State (persisted inside localStorage)
   const [state, setState] = useState(() => getSavedState());
 
-  // Firestore DB connection state
-  const [isLoadingDb, setIsLoadingDb] = useState(true);
+  // Firestore DB connection state - start false if local cache exists for instant mobile/desktop access
+  const [isLoadingDb, setIsLoadingDb] = useState(() => !getSavedState().users || getSavedState().users.length === 0);
 
   // Authenticated Profile State
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -32,7 +32,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         // Sync with freshest user record
         const freshState = getSavedState();
-        const freshUser = freshState.users.find((u: any) => u.id === parsed.id);
+        const freshUser = freshState.users?.find((u: any) => u.id === parsed.id);
         if (freshUser) {
           return freshUser;
         }
@@ -42,11 +42,29 @@ export default function App() {
     return null;
   });
 
+  // Login modal toggle state for Guest mode
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
   // Navigation tab route state
   const [activeTab, setActiveTab] = useState<string>('');
+  const [isManualOpen, setIsManualOpen] = useState(false);
 
-  // Load from Firestore on mount
+  // Guest dummy user profile for unauthenticated visitors
+  const guestUser: User = {
+    id: 'guest-user',
+    name: 'Visitante',
+    email: 'visitante@logoalibarber.com',
+    role: 'CUSTOMER',
+    isActive: true,
+    avatar: '👋',
+    login: 'guest',
+    password: ''
+  };
+
+  // Load from Firestore on mount & attach real-time multi-device listeners
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
     async function syncFromDb() {
       try {
         const dbState = await loadStateFromFirestore();
@@ -57,6 +75,8 @@ export default function App() {
             const freshUser = dbState.users.find((u: any) => u.id === currentUser.id);
             if (freshUser) {
               setCurrentUser(freshUser);
+            } else {
+              setCurrentUser(null);
             }
           }
         }
@@ -65,8 +85,24 @@ export default function App() {
       } finally {
         setIsLoadingDb(false);
       }
+
+      // Attach real-time snapshot listener (synchronizes mobile phone, computer, and cashier live)
+      unsubscribe = subscribeToFirestoreState((updatedChunk) => {
+        setState(prev => {
+          const nextState = { ...prev, ...updatedChunk };
+          saveState(nextState);
+          return nextState;
+        });
+      });
     }
+
     syncFromDb();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   // Save changes automatically as a local backup
@@ -86,11 +122,24 @@ export default function App() {
   // Adjust routing tabs automatically according to logged permissions
   useEffect(() => {
     if (currentUser) {
+      const perms = currentUser.permissions || [];
+      const canAccessAdmin = currentUser.role === 'ADMIN' || perms.some(p => [
+        'MANAGE_SUPPLIES', 'VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_CATALOG', 'MANAGE_PLANS', 'MANAGE_PARAMETERS'
+      ].includes(p));
+      const canAccessBarber = currentUser.role === 'ADMIN' || currentUser.role === 'BARBER' || perms.includes('MANAGE_APPOINTMENTS') || perms.includes('EDIT_COMANDAS');
+      const canAccessCaixa = currentUser.role === 'ADMIN' || currentUser.role === 'CASHIER' || perms.includes('CHECKOUT_COMANDAS');
+
       if (currentUser.role === 'ADMIN') {
         setActiveTab('admin');
       } else if (currentUser.role === 'BARBER') {
         setActiveTab('barbeiro');
       } else if (currentUser.role === 'CASHIER') {
+        setActiveTab('caixa');
+      } else if (canAccessAdmin) {
+        setActiveTab('admin');
+      } else if (canAccessBarber) {
+        setActiveTab('barbeiro');
+      } else if (canAccessCaixa) {
         setActiveTab('caixa');
       } else {
         setActiveTab('cliente');
@@ -100,13 +149,20 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Helper trigger to update state chunks easily
+  // Helper trigger to update state chunks easily and sync to Firestore
   const handleUpdateState = async (key: string, val: any) => {
-    // 1. Update React state immediately (optimistic UI rendering)
-    setState(prev => ({
-      ...prev,
-      [key]: val
-    }));
+    let previousList: any[] = [];
+
+    // 1. Update React state immediately and backup to localStorage
+    setState(prev => {
+      previousList = (prev[key as keyof typeof prev] as any[]) || [];
+      const nextState = {
+        ...prev,
+        [key]: val
+      };
+      saveState(nextState);
+      return nextState;
+    });
 
     // 2. Perform background write to Cloud Firestore
     try {
@@ -115,7 +171,6 @@ export default function App() {
       } else if (key === 'categories') {
         await saveDocumentToFirestore('categories', 'list', { values: val });
       } else {
-        const existingList = state[key as keyof typeof state] as any[];
         const newList = val as any[];
 
         // Save new or updated items
@@ -132,8 +187,8 @@ export default function App() {
 
         // Delete removed items
         const newIds = new Set(newList.map(item => item.id || (key === 'barberDetails' ? item.userId : '')));
-        if (existingList && Array.isArray(existingList)) {
-          for (const oldItem of existingList) {
+        if (previousList && Array.isArray(previousList)) {
+          for (const oldItem of previousList) {
             const oldId = oldItem.id || (key === 'barberDetails' ? oldItem.userId : '');
             if (oldId && !newIds.has(oldId)) {
               await deleteDocumentFromFirestore(key, oldId);
@@ -155,20 +210,25 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // CLient Registration immediately logs them in!
-  const handleRegisterClient = (name: string, phone: string, login_user: string, secret_pass: string) => {
+  // Client Registration with referral code & instant auto-login!
+  const handleRegisterClient = (name: string, phone: string, login_user: string, secret_pass: string, referredByCode?: string) => {
     const newId = `cli-${Date.now()}`;
+    const cleanName = name.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'CLI';
+    const myReferralCode = `TRIMA-${cleanName}${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newCustomerUser: User = {
       id: newId,
       name: name,
-      email: `${login_user}@logoalibarber.com`,
+      email: `${login_user.replace(/[^\d]+/g, '')}@logoalibarber.com`,
       role: 'CUSTOMER',
       phone: phone,
       isActive: true,
       avatar: '👨',
       login: login_user.toLowerCase().trim(),
       password: secret_pass,
-      permissions: ['CUSTOMER_PORTAL']
+      permissions: ['CUSTOMER_PORTAL'],
+      referralCode: myReferralCode,
+      referredByCode: referredByCode ? referredByCode.trim().toUpperCase() : undefined
     };
 
     // Update global user array
@@ -178,7 +238,7 @@ export default function App() {
     // Auto-login!
     setTimeout(() => {
       setCurrentUser(newCustomerUser);
-    }, 450);
+    }, 300);
   };
 
   if (isLoadingDb) {
@@ -193,7 +253,7 @@ export default function App() {
             </div>
           )}
           <h2 className="text-lg font-extrabold uppercase tracking-widest text-yellow-500">
-            {state.parameters?.shopName || 'Logo Ali Barbearia'}
+            {state.parameters?.shopName || 'Trima Studio'}
           </h2>
           <p className="text-xs text-zinc-400 uppercase font-mono tracking-wider">
             Conectando ao Banco de Dados Firestore...
@@ -249,16 +309,23 @@ export default function App() {
         }
       `}</style>
       
-      {/* 1. AUTH SWITCH */}
-      {!currentUser ? (
+      {/* 1. AUTH SWITCH OR GUEST PORTAL MODE */}
+      {!currentUser && showLoginModal ? (
         <LoginScreen
           users={state.users}
           parameters={state.parameters || undefined}
-          onLogin={handleLogin}
-          onRegisterClient={handleRegisterClient}
+          onLogin={(user) => {
+            handleLogin(user);
+            setShowLoginModal(false);
+          }}
+          onRegisterClient={(name, phone, login, password, referralCode) => {
+            handleRegisterClient(name, phone, login, password, referralCode);
+            setShowLoginModal(false);
+          }}
+          onClose={() => setShowLoginModal(false)}
         />
       ) : (
-        /* MAIN BODY WRAPPER */
+        /* MAIN BODY WRAPPER (LOGGED OR GUEST MODE) */
         <div className="flex-1 flex flex-col">
           
           {/* HEADER MAIN BRANDING */}
@@ -274,7 +341,7 @@ export default function App() {
                   {state.parameters?.shopName ? (
                     <span>{state.parameters.shopName}</span>
                   ) : (
-                    <>Logo Ali <span className="text-white">Barbearia</span></>
+                    <>Trima <span className="text-white">Studio</span></>
                   )}
                 </h1>
                 <p className="text-[9px] text-zinc-400 uppercase tracking-widest font-mono">
@@ -283,222 +350,213 @@ export default function App() {
               </div>
             </div>
 
-            {/* Profile widget and Log out trigger */}
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-bold text-white">{currentUser.name}</span>
-                <span className="text-[10px] text-yellow-500 font-mono uppercase font-semibold">
-                  Perfil: {currentUser.role}
+            {/* Profile widget / Login Trigger */}
+            {currentUser ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex flex-col text-right">
+                  <span className="text-xs font-bold text-white">{currentUser.name}</span>
+                  <span className="text-[10px] text-yellow-500 font-mono uppercase font-semibold">
+                    Perfil: {currentUser.role}
+                  </span>
+                </div>
+                <span className="text-xl bg-zinc-900 border border-zinc-800 p-1 px-2 rounded-lg">
+                  {currentUser.avatar || '👤'}
                 </span>
+                <button
+                  onClick={() => setIsManualOpen(true)}
+                  className="px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
+                  title="Abrir Manual do Sistema"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span className="hidden md:inline">Manual</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-red-400 rounded-lg transition cursor-pointer"
+                  title="Sair do Sistema"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
-              <span className="text-xl bg-zinc-900 border border-zinc-800 p-1 px-2 rounded-lg">
-                {currentUser.avatar || '👤'}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-red-400 rounded-lg transition cursor-pointer"
-                title="Sair do Sistema"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(true)}
+                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-extrabold text-xs uppercase font-mono rounded-xl transition cursor-pointer flex items-center gap-2 shadow-sm"
+                >
+                  <UserCheck className="w-4 h-4" /> Entrar / Cadastrar
+                </button>
+              </div>
+            )}
           </header>
 
           {/* DYNAMIC PERMISSIONS TAB SELECTOR (TAB RAIL) */}
-          <nav className="bg-[#0A0A0C] border-b border-zinc-850/80 px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap gap-2 text-xs font-medium">
-            
-            {/* ADMIN INTERFACE TABS */}
-            {currentUser.role === 'ADMIN' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('admin')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'admin' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  👑 Configuração & Administração
-                </button>
-                <button
-                  onClick={() => setActiveTab('barbeiro')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  🧔 Cadeira Barbeiro
-                </button>
-                <button
-                  onClick={() => setActiveTab('caixa')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'caixa' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  💼 Balcão do Caixa
-                </button>
-                <button
-                  onClick={() => setActiveTab('facilitador')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  ⚡ Apoio & Facilitador
-                </button>
-                <button
-                  onClick={() => setActiveTab('cliente')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'cliente' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  👤 Visão Cliente
-                </button>
-              </>
-            )}
+          {currentUser && (() => {
+            const perms = currentUser.permissions || [];
+            const canAccessAdmin = currentUser.role === 'ADMIN' || perms.some(p => [
+              'MANAGE_SUPPLIES', 'VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_CATALOG', 'MANAGE_PLANS', 'MANAGE_PARAMETERS'
+            ].includes(p));
+            const canAccessBarber = currentUser.role === 'ADMIN' || currentUser.role === 'BARBER' || perms.includes('MANAGE_APPOINTMENTS') || perms.includes('EDIT_COMANDAS');
+            const canAccessCaixa = currentUser.role === 'ADMIN' || currentUser.role === 'CASHIER' || perms.includes('CHECKOUT_COMANDAS');
+            const canAccessCustomer = currentUser.role === 'ADMIN' || currentUser.role === 'CUSTOMER' || perms.includes('CUSTOMER_PORTAL');
 
-            {/* BARBER TABS */}
-            {currentUser.role === 'BARBER' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('barbeiro')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  🧔 Minha Agenda & Comandas
-                </button>
-                {currentUser.permissions?.includes('DAILY_FACILITATOR') && (
+            return (
+              <nav className="bg-[#0A0A0C] border-b border-zinc-850/80 px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap gap-2 text-xs font-medium">
+                {canAccessAdmin && (
                   <button
-                    onClick={() => setActiveTab('facilitador')}
-                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    onClick={() => setActiveTab('admin')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
+                      activeTab === 'admin' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
-                    ⚡ Apoio & Facilitador
+                    {currentUser.role === 'ADMIN' ? '👑 Configuração & Administração' : '📦 Gestão & Suprimentos'}
                   </button>
                 )}
-              </>
-            )}
 
-            {/* CASHIER TABS */}
-            {currentUser.role === 'CASHIER' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('caixa')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'caixa' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  💼 Caixa & Faturamento
-                </button>
-                {(currentUser.permissions?.includes('DAILY_FACILITATOR') || currentUser.permissions === undefined) && (
+                {canAccessBarber && (
                   <button
-                    onClick={() => setActiveTab('facilitador')}
-                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    onClick={() => setActiveTab('barbeiro')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
+                      activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
-                    ⚡ Apoio & Facilitador
+                    🧔 Minha Agenda & Comandas
                   </button>
                 )}
-              </>
-            )}
 
-            {/* CUSTOMER TABS */}
-            {currentUser.role === 'CUSTOMER' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('cliente')}
-                  className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                    activeTab === 'cliente' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  🧔 Meu Agendamento Online
-                </button>
-                {currentUser.permissions?.includes('DAILY_FACILITATOR') && (
+                {canAccessCaixa && (
                   <button
-                    onClick={() => setActiveTab('facilitador')}
-                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition ${
-                      activeTab === 'facilitador' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    onClick={() => setActiveTab('caixa')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
+                      activeTab === 'caixa' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
-                    ⚡ Apoio & Facilitador
+                    💼 Balcão do Caixa
                   </button>
                 )}
-              </>
-            )}
-          </nav>
+
+                {canAccessCustomer && (
+                  <button
+                    onClick={() => setActiveTab('cliente')}
+                    className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
+                      activeTab === 'cliente' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    👤 Visão Cliente
+                  </button>
+                )}
+              </nav>
+            );
+          })()}
 
           {/* MAIN MODULE LOADER VIEWS */}
           <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto w-full pb-20">
-            
-            {activeTab === 'admin' && currentUser.role === 'ADMIN' && (
-              <AdminPanel
-                users={state.users}
-                services={state.services}
-                products={state.products}
-                plans={state.plans}
-                barberDetails={state.barberDetails}
-                comandas={state.comandas}
-                parameters={state.parameters}
-                categories={state.categories || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']}
-                onUpdateState={handleUpdateState}
-                onResetDatabase={async () => {
-                  setIsLoadingDb(true);
-                  await clearDatabaseToProduction();
-                  const dbState = await loadStateFromFirestore();
-                  if (dbState) {
-                    setState(dbState);
-                  }
-                  setCurrentUser(null);
-                  localStorage.removeItem('logo_ali_b2_logged_user');
-                  setIsLoadingDb(false);
-                }}
-              />
-            )}
-
-            {activeTab === 'barbeiro' && (currentUser.role === 'BARBER' || currentUser.role === 'ADMIN') && (
-              <BarberPanel
-                currentBarber={currentUser.role === 'ADMIN' ? state.users.find(u => u.role === 'BARBER') || currentUser : currentUser}
-                users={state.users}
-                services={state.services}
-                products={state.products}
-                appointments={state.appointments}
-                comandas={state.comandas}
-                onUpdateState={handleUpdateState}
-              />
-            )}
-
-            {activeTab === 'caixa' && (currentUser.role === 'CASHIER' || currentUser.role === 'ADMIN') && (
-              <CashierPanel
-                comandas={state.comandas}
-                users={state.users}
-                barberDetails={state.barberDetails}
-                subscriptions={state.subscriptions}
-                parameters={state.parameters}
-                onUpdateState={handleUpdateState}
-              />
-            )}
-
-            {activeTab === 'cliente' && (currentUser.role === 'CUSTOMER' || currentUser.role === 'ADMIN') && (
+            {!currentUser ? (
               <CustomerPanel
-                currentCustomer={currentUser.role === 'ADMIN' ? state.users.find(u => u.role === 'CUSTOMER') || currentUser : currentUser}
+                currentCustomer={guestUser}
                 users={state.users}
                 services={state.services}
                 plans={state.plans}
                 appointments={state.appointments}
                 subscriptions={state.subscriptions}
                 parameters={state.parameters}
+                npsFeedbacks={state.npsFeedbacks || []}
                 onUpdateState={handleUpdateState}
+                isGuestMode={true}
+                onOpenLoginModal={() => setShowLoginModal(true)}
               />
-            )}
+            ) : (() => {
+              const perms = currentUser.permissions || [];
+              const canAccessAdmin = currentUser.role === 'ADMIN' || perms.some(p => [
+                'MANAGE_SUPPLIES', 'VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_CATALOG', 'MANAGE_PLANS', 'MANAGE_PARAMETERS'
+              ].includes(p));
+              const canAccessBarber = currentUser.role === 'ADMIN' || currentUser.role === 'BARBER' || perms.includes('MANAGE_APPOINTMENTS') || perms.includes('EDIT_COMANDAS');
+              const canAccessCaixa = currentUser.role === 'ADMIN' || currentUser.role === 'CASHIER' || perms.includes('CHECKOUT_COMANDAS');
+              const canAccessCustomer = currentUser.role === 'ADMIN' || currentUser.role === 'CUSTOMER' || perms.includes('CUSTOMER_PORTAL');
 
-            {activeTab === 'facilitador' && (currentUser.permissions?.includes('DAILY_FACILITATOR') || currentUser.role === 'ADMIN') && (
-              <FacilitadorPanel
-                currentUser={currentUser}
-                users={state.users}
-                onUpdateState={handleUpdateState}
-              />
-            )}
+              return (
+                <>
+                  {activeTab === 'admin' && canAccessAdmin && (
+                    <AdminPanel
+                      currentUser={currentUser}
+                      users={state.users}
+                      services={state.services}
+                      products={state.products}
+                      plans={state.plans}
+                      barberDetails={state.barberDetails}
+                      comandas={state.comandas}
+                      appointments={state.appointments}
+                      parameters={state.parameters}
+                      categories={state.categories || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']}
+                      supplyTransactions={state.supplyTransactions || []}
+                      npsFeedbacks={state.npsFeedbacks || []}
+                      onUpdateState={handleUpdateState}
+                      onResetDatabase={async () => {
+                        setIsLoadingDb(true);
+                        await clearDatabaseToProduction();
+                        const dbState = await loadStateFromFirestore();
+                        if (dbState) {
+                          setState(dbState);
+                        }
+                        setCurrentUser(null);
+                        localStorage.removeItem('logo_ali_b2_logged_user');
+                        setIsLoadingDb(false);
+                      }}
+                    />
+                  )}
 
+                  {activeTab === 'barbeiro' && canAccessBarber && (
+                    <BarberPanel
+                      currentBarber={currentUser}
+                      users={state.users}
+                      services={state.services}
+                      products={state.products}
+                      appointments={state.appointments}
+                      comandas={state.comandas}
+                      subscriptions={state.subscriptions || []}
+                      barberDetails={state.barberDetails || []}
+                      parameters={state.parameters}
+                      onUpdateState={handleUpdateState}
+                    />
+                  )}
+
+                  {activeTab === 'caixa' && canAccessCaixa && (
+                    <CashierPanel
+                      currentUser={currentUser}
+                      comandas={state.comandas}
+                      users={state.users}
+                      barberDetails={state.barberDetails}
+                      subscriptions={state.subscriptions}
+                      appointments={state.appointments}
+                      parameters={state.parameters}
+                      onUpdateState={handleUpdateState}
+                    />
+                  )}
+
+                  {activeTab === 'cliente' && canAccessCustomer && (
+                    <CustomerPanel
+                      currentCustomer={currentUser}
+                      users={state.users}
+                      services={state.services}
+                      plans={state.plans}
+                      appointments={state.appointments}
+                      subscriptions={state.subscriptions}
+                      parameters={state.parameters}
+                      npsFeedbacks={state.npsFeedbacks || []}
+                      onUpdateState={handleUpdateState}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </main>
+
+          <ManualModal
+            isOpen={isManualOpen}
+            onClose={() => setIsManualOpen(false)}
+            defaultRole={currentUser?.role || 'ADMIN'}
+          />
 
         </div>
       )}

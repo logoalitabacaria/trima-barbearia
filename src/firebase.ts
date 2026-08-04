@@ -8,7 +8,8 @@ import {
   getDocs,
   collection,
   deleteDoc,
-  getDocFromServer
+  getDocFromServer,
+  onSnapshot
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import {
@@ -20,7 +21,8 @@ import {
   INITIAL_PLANS,
   INITIAL_SUBSCRIPTIONS,
   INITIAL_APPOINTMENTS,
-  INITIAL_COMANDAS
+  INITIAL_COMANDAS,
+  getSavedState
 } from './data';
 
 enum OperationType {
@@ -60,6 +62,20 @@ async function testConnection() {
 }
 testConnection();
 
+// Recursively clean objects before sending to Firestore (removes undefined fields which break setDoc)
+export function sanitizeData(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeData);
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    if (obj[key] !== undefined) {
+      cleaned[key] = sanitizeData(obj[key]);
+    }
+  }
+  return cleaned;
+}
+
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -82,6 +98,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export async function loadStateFromFirestore() {
   try {
+    const savedLocal = getSavedState();
+
     // 1. Fetch Users
     const usersSnap = await getDocs(collection(db, 'users')).catch(err => {
       handleFirestoreError(err, OperationType.LIST, 'users');
@@ -138,53 +156,102 @@ export async function loadStateFromFirestore() {
     });
     let comandasList = cmdSnap.docs.map(d => d.data());
 
-    // 9. Fetch parameters
+    // 9. Fetch Supply Transactions
+    const supSnap = await getDocs(collection(db, 'supplyTransactions')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'supplyTransactions');
+      return { docs: [] };
+    });
+    let supplyTransactionsList = supSnap.docs.map(d => d.data());
+
+    // 10. Fetch parameters
     const paramDoc = await getDoc(doc(db, 'parameters', 'system')).catch(err => {
       handleFirestoreError(err, OperationType.GET, 'parameters/system');
     });
     let parametersData = paramDoc && paramDoc.exists() ? paramDoc.data() : null;
 
-    // 10. Fetch categories
+    // 11. Fetch categories
     const catDoc = await getDoc(doc(db, 'categories', 'list')).catch(err => {
       handleFirestoreError(err, OperationType.GET, 'categories/list');
     });
     let categoriesList = catDoc && catDoc.exists() ? catDoc.data().values : null;
 
-    // IF FIRESTORE IS COMPLETELY EMPTY (FIRST RUN), BOOTSTRAP IT WITH INITIAL_DATA!
-    const isDbEmpty = usersList.length === 0 && servicesList.length === 0;
+    // 12. Fetch NPS Feedbacks
+    const npsSnap = await getDocs(collection(db, 'npsFeedbacks')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'npsFeedbacks');
+      return { docs: [] };
+    });
+    let npsFeedbacksList = npsSnap.docs.map(d => d.data());
 
-    if (isDbEmpty) {
-      console.log("Firestore is empty. Bootstrapping data...");
-      await bootstrapEmptyDb();
-      return {
-        users: INITIAL_USERS,
-        barberDetails: INITIAL_BARBER_DETAILS,
-        services: INITIAL_SERVICES,
-        products: INITIAL_PRODUCTS,
-        plans: INITIAL_PLANS,
-        subscriptions: INITIAL_SUBSCRIPTIONS,
-        appointments: INITIAL_APPOINTMENTS,
-        comandas: INITIAL_COMANDAS,
-        parameters: INITIAL_SYSTEM_PARAMETERS,
-        categories: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']
-      };
+    // Merge with localStorage if Firestore was empty for certain collections
+    const finalUsers = usersList.length > 0 ? usersList : (savedLocal.users || []);
+    const finalBarberDetails = barberDetailsList.length > 0 ? barberDetailsList : (savedLocal.barberDetails || []);
+    const finalServices = servicesList.length > 0 ? servicesList : (savedLocal.services || []);
+    const finalProducts = productsList.length > 0 ? productsList : (savedLocal.products || []);
+    const finalPlans = plansList.length > 0 ? plansList : (savedLocal.plans || []);
+    const finalSubscriptions = subscriptionsList.length > 0 ? subscriptionsList : (savedLocal.subscriptions || []);
+    const finalAppointments = appointmentsList.length > 0 ? appointmentsList : (savedLocal.appointments || []);
+    const finalComandas = comandasList.length > 0 ? comandasList : (savedLocal.comandas || []);
+    const finalSupplyTransactions = supplyTransactionsList.length > 0 ? supplyTransactionsList : (savedLocal.supplyTransactions || []);
+    const finalNpsFeedbacks = npsFeedbacksList.length > 0 ? npsFeedbacksList : (savedLocal.npsFeedbacks || []);
+
+    // FORCE ENSURE MAIN ADMIN IS ALWAYS PRESENT
+    const adminObj = {
+      id: 'usr-admin',
+      name: 'Wagner Barrera Moreno',
+      email: 'wagnerbmoreno@gmail.com',
+      role: 'ADMIN',
+      phone: '(11) 99999-9999',
+      isActive: true,
+      avatar: '👑',
+      login: 'wagnerbmoreno@gmail.com',
+      password: 'Wag01121201!',
+      permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
+    };
+    const hasAdmin = finalUsers.some((u: any) => u.id === 'usr-admin' || u.login === 'wagnerbmoreno@gmail.com');
+    if (!hasAdmin) {
+      finalUsers.unshift(adminObj);
+    }
+    await saveDocumentToFirestore('users', 'usr-admin', adminObj);
+
+    // Sync records to Firestore if Firestore had 0 items but local storage had data
+    if (usersList.length === 0 && finalUsers.length > 0) {
+      for (const u of finalUsers) {
+        if (u.id) await saveDocumentToFirestore('users', u.id, u);
+      }
+    }
+    if (servicesList.length === 0 && finalServices.length > 0) {
+      for (const s of finalServices) {
+        if (s.id) await saveDocumentToFirestore('services', s.id, s);
+      }
+    }
+    if (productsList.length === 0 && finalProducts.length > 0) {
+      for (const p of finalProducts) {
+        if (p.id) await saveDocumentToFirestore('products', p.id, p);
+      }
+    }
+    if (barberDetailsList.length === 0 && finalBarberDetails.length > 0) {
+      for (const b of finalBarberDetails) {
+        if (b.userId) await saveDocumentToFirestore('barberDetails', b.userId, b);
+      }
     }
 
     return {
-      users: usersList,
-      barberDetails: barberDetailsList,
-      services: servicesList,
-      products: productsList,
-      plans: plansList,
-      subscriptions: subscriptionsList,
-      appointments: appointmentsList,
-      comandas: comandasList,
-      parameters: parametersData || INITIAL_SYSTEM_PARAMETERS,
-      categories: categoriesList || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']
+      users: finalUsers,
+      barberDetails: finalBarberDetails,
+      services: finalServices,
+      products: finalProducts,
+      plans: finalPlans,
+      subscriptions: finalSubscriptions,
+      appointments: finalAppointments,
+      comandas: finalComandas,
+      supplyTransactions: finalSupplyTransactions,
+      npsFeedbacks: finalNpsFeedbacks,
+      parameters: parametersData || savedLocal.parameters || INITIAL_SYSTEM_PARAMETERS,
+      categories: categoriesList || savedLocal.categories || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']
     };
   } catch (error) {
     console.error("Error loading Firestore state:", error);
-    return null;
+    return getSavedState();
   }
 }
 
@@ -192,32 +259,31 @@ export async function loadStateFromFirestore() {
 async function bootstrapEmptyDb() {
   try {
     for (const u of INITIAL_USERS) {
-      await setDoc(doc(db, 'users', u.id), u);
+      await saveDocumentToFirestore('users', u.id, u);
     }
     for (const b of INITIAL_BARBER_DETAILS) {
-      // Create safe ID for barberDetails using barber's userId
-      await setDoc(doc(db, 'barberDetails', b.userId), b);
+      await saveDocumentToFirestore('barberDetails', b.userId, b);
     }
     for (const s of INITIAL_SERVICES) {
-      await setDoc(doc(db, 'services', s.id), s);
+      await saveDocumentToFirestore('services', s.id, s);
     }
     for (const p of INITIAL_PRODUCTS) {
-      await setDoc(doc(db, 'products', p.id), p);
+      await saveDocumentToFirestore('products', p.id, p);
     }
     for (const pl of INITIAL_PLANS) {
-      await setDoc(doc(db, 'plans', pl.id), pl);
+      await saveDocumentToFirestore('plans', pl.id, pl);
     }
     for (const sub of INITIAL_SUBSCRIPTIONS) {
-      await setDoc(doc(db, 'subscriptions', sub.id), sub);
+      await saveDocumentToFirestore('subscriptions', sub.id, sub);
     }
     for (const apt of INITIAL_APPOINTMENTS) {
-      await setDoc(doc(db, 'appointments', apt.id), apt);
+      await saveDocumentToFirestore('appointments', apt.id, apt);
     }
     for (const cmd of INITIAL_COMANDAS) {
-      await setDoc(doc(db, 'comandas', cmd.id), cmd);
+      await saveDocumentToFirestore('comandas', cmd.id, cmd);
     }
-    await setDoc(doc(db, 'parameters', 'system'), INITIAL_SYSTEM_PARAMETERS);
-    await setDoc(doc(db, 'categories', 'list'), { values: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT'] });
+    await saveDocumentToFirestore('parameters', 'system', INITIAL_SYSTEM_PARAMETERS);
+    await saveDocumentToFirestore('categories', 'list', { values: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT'] });
     console.log("Bootstrapped successfully to Firestore!");
   } catch (error) {
     console.error("Bootstrap error:", error);
@@ -228,8 +294,10 @@ async function bootstrapEmptyDb() {
 export async function saveDocumentToFirestore(collectionName: string, id: string, data: any) {
   try {
     const docRef = doc(db, collectionName, id);
-    await setDoc(docRef, data);
+    const cleanData = sanitizeData(data);
+    await setDoc(docRef, cleanData);
   } catch (err) {
+    console.error(`Error saving to Firestore [${collectionName}/${id}]:`, err);
     handleFirestoreError(err, OperationType.WRITE, `${collectionName}/${id}`);
   }
 }
@@ -239,13 +307,14 @@ export async function deleteDocumentFromFirestore(collectionName: string, id: st
     const docRef = doc(db, collectionName, id);
     await deleteDoc(docRef);
   } catch (err) {
+    console.error(`Error deleting from Firestore [${collectionName}/${id}]:`, err);
     handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${id}`);
   }
 }
 
 // Clear all simulation records and reset Firestore + local state to clean production defaults
 export async function clearDatabaseToProduction() {
-  const collectionsToClear = ['users', 'barberDetails', 'services', 'products', 'plans', 'subscriptions', 'appointments', 'comandas'];
+  const collectionsToClear = ['users', 'barberDetails', 'services', 'products', 'plans', 'subscriptions', 'appointments', 'comandas', 'supplyTransactions'];
   for (const colName of collectionsToClear) {
     try {
       const snap = await getDocs(collection(db, colName));
@@ -263,21 +332,21 @@ export async function clearDatabaseToProduction() {
   // Restore main admin to users
   const adminObj = INITIAL_USERS.find(u => u.id === 'usr-admin') || {
     id: 'usr-admin',
-    name: 'Logo Ali Barbearia (Administrador)',
-    email: 'logoalitabacaria@gmail.com',
+    name: 'Wagner Barrera Moreno',
+    email: 'wagnerbmoreno@gmail.com',
     role: 'ADMIN',
     phone: '(11) 99999-9999',
     isActive: true,
     avatar: '👑',
-    login: 'admin',
-    password: 'Logoali123!',
-    permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL']
+    login: 'wagnerbmoreno@gmail.com',
+    password: 'Wag01121201!',
+    permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
   };
-  await setDoc(doc(db, 'users', 'usr-admin'), adminObj);
+  await saveDocumentToFirestore('users', 'usr-admin', adminObj);
 
   // Set parameters and categories to standard default
-  await setDoc(doc(db, 'parameters', 'system'), INITIAL_SYSTEM_PARAMETERS);
-  await setDoc(doc(db, 'categories', 'list'), { values: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT'] });
+  await saveDocumentToFirestore('parameters', 'system', INITIAL_SYSTEM_PARAMETERS);
+  await saveDocumentToFirestore('categories', 'list', { values: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT'] });
 
   // Clear localStorage backups
   try {
@@ -285,4 +354,71 @@ export async function clearDatabaseToProduction() {
   } catch (e) {
     console.error(e);
   }
+}
+
+// ----------------------------------------------------
+// Real-time Multi-Device Sync Engine (onSnapshot)
+// ----------------------------------------------------
+export function subscribeToFirestoreState(onStateChange: (updatedData: Partial<any>) => void) {
+  const unsubs: (() => void)[] = [];
+
+  const collections = [
+    { name: 'users', key: 'users' },
+    { name: 'barberDetails', key: 'barberDetails' },
+    { name: 'services', key: 'services' },
+    { name: 'products', key: 'products' },
+    { name: 'plans', key: 'plans' },
+    { name: 'subscriptions', key: 'subscriptions' },
+    { name: 'appointments', key: 'appointments' },
+    { name: 'comandas', key: 'comandas' },
+    { name: 'supplyTransactions', key: 'supplyTransactions' },
+    { name: 'npsFeedbacks', key: 'npsFeedbacks' }
+  ];
+
+  collections.forEach(({ name, key }) => {
+    try {
+      const unsub = onSnapshot(collection(db, name), (snap) => {
+        // Return latest Firestore snapshot docs
+        const list = snap.docs.map(d => ({ ...d.data() }));
+        if (list.length > 0 || snap.metadata.hasPendingWrites === false) {
+          onStateChange({ [key]: list });
+        }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, name);
+      });
+      unsubs.push(unsub);
+    } catch (e) {
+      console.error(`Failed to attach snapshot listener for ${name}:`, e);
+    }
+  });
+
+  try {
+    const unsubParam = onSnapshot(doc(db, 'parameters', 'system'), (snap) => {
+      if (snap.exists()) {
+        onStateChange({ parameters: snap.data() });
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'parameters/system');
+    });
+    unsubs.push(unsubParam);
+  } catch (e) {
+    console.error('Error listening to parameters:', e);
+  }
+
+  try {
+    const unsubCat = onSnapshot(doc(db, 'categories', 'list'), (snap) => {
+      if (snap.exists() && snap.data()?.values) {
+        onStateChange({ categories: snap.data().values });
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'categories/list');
+    });
+    unsubs.push(unsubCat);
+  } catch (e) {
+    console.error('Error listening to categories:', e);
+  }
+
+  return () => {
+    unsubs.forEach(fn => fn());
+  };
 }

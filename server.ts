@@ -99,15 +99,15 @@ ${supplierText}`,
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Você é um copywriter de alto nível para mídias sociais. Crie o conteúdo para um post (no Reels/Stories ou Feed) do Instagram da "Logo Ali Barbearia & Tabacaria", uma barbearia de visual sofisticado com tabacaria anexa de essências, vapes e acessórios.
+        contents: `Você é um copywriter de alto nível para mídias sociais. Crie o conteúdo para um post (no Reels/Stories ou Feed) do Instagram do "Trima Studio", um estúdio de estética de visual sofisticado e com fluxo de comanda digital integrado.
 Tipo de post: ${postType}
 Informações complementares: ${additionalInfo || "Nenhuma informação extra fornecida"}
 
 Gere um JSON com os seguintes campos:
-"title": Um título curto, chamativo e em caixa alta para colocar dentro da imagem (máximo 40 caracteres, ex: "PODS REABASTECIDOS", "ESTILO EM DIA")
+"title": Um título curto, chamativo e em caixa alta para colocar dentro da imagem (máximo 40 caracteres, ex: "ESTILO REINVENTADO", "ESTILO EM DIA")
 "subtitle": Um subtexto ou badge superior chamativo para colocar na imagem (ex: "NOVIDADE", "TABELA DE PREÇOS", "DICA DE PARCEIRO")
 "bodyText": O texto descritivo curto secundário para figurar dentro da imagem (máximo 120 caracteres, bem visual)
-"caption": Legenda completa do post otimizada para o Instagram, motivadora, com emojis adequados e hashtags estratégicas relevantes de barbearia e tabacaria.
+"caption": Legenda completa do post otimizada para o Instagram, motivadora, com emojis adequados e hashtags estratégicas relevantes de estética, beleza e barbearia.
 
 Retorne APENAS o JSON puro e válido, sem envolver em markdown do tipo \`\`\`json ou texto introdutório.`
       });
@@ -150,7 +150,7 @@ Retorne APENAS o JSON puro e válido, sem envolver em markdown do tipo \`\`\`jso
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Você é o mestre de comunicação com clientes da Logo Ali Barbearia & Tabacaria.
+        contents: `Você é o mestre de comunicação com clientes do Trima Studio.
 Escreva uma mensagem de WhatsApp personalizada e engajadora com as seguintes características:
 Tom da mensagem: ${tone || "Amigável e profissional"}
 Situação/Objetivo: ${situation}
@@ -176,16 +176,16 @@ A mensagem deve ser amigável mas profissional, polida, sem placeholders genéri
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Escreva uma resposta de alta conversão, empatia e otimizada para SEO local no Google Business de uma barbearia com tabacaria anexa ("Logo Ali Barbearia & Tabacaria").
+        contents: `Escreva uma resposta de alta conversão, empatia e otimizada para SEO local no Google Business de um estúdio de estética de visual sofisticado ("Trima Studio").
 Cliente que avaliou: ${reviewerName}
 Classificação em estrelas: ${starRating || 5} estrelas
 Comentário do cliente: "${reviewText || "Nenhuma avaliação por escrito, apenas as estrelas."}"
 Diretivas adicionais do proprietário: ${ownerDirectives || "Nenhuma"}
 
-Aplique gatilhos de SEO local de forma espontânea (ex: mencionar "barba", "corte degradê", "tabacaria e pods com melhor preço", "atendimento premium", "espaço agradável em São Paulo").
+Aplique gatilhos de SEO local de forma espontânea (ex: mencionar "cortes", "atendimento premium", "unhas", "estética facial", "espaço agradável", "beleza masculina e feminina").
 Se a avaliação for ruim (1-3 estrelas), responda com extrema cautela, cordialidade impecável, pedindo desculpas pela experiência inadequada, facultando canal de contato direto e convidando para uma nova visita por nossa conta para reverter o impacto.
-Se for boa (4-5 estrelas), agradeça entusiasmado, comente os elogios e chame sutilmente para o próximo corte ou novidades do tabaco de qualidade.
-Retorne APENAS o texto livre de resposta final na primeira pessoa do plural (nós/proprietários da barbearia), pronto para copiar e colar. Não utilize formatação markdown, aspas envolventes, títulos ou explicações.`
+Se for boa (4-5 estrelas), agradeça entusiasmado, comente os elogios e chame sutilmente para o próximo atendimento.
+Retorne APENAS o texto livre de resposta final na primeira pessoa do plural (nós/proprietários do estúdio), pronto para copiar e colar. Não utilize formatação markdown, aspas envolventes, títulos ou explicações.`
       });
 
       res.json({ text: response.text?.trim() || "" });

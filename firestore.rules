@@ -73,5 +73,19 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+    // Supply Transactions collection
+    match /supplyTransactions/{transactionId} {
+      allow read, write: if true;
+    }
+
+    // NPS Feedbacks collection
+    match /npsFeedbacks/{feedbackId} {
+      allow read, write: if true;
+    }
+
+    // Connection test collection
+    match /test/{docId} {
+      allow read, write: if true;
+    }
   }
 }

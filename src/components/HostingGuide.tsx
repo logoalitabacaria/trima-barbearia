@@ -103,9 +103,42 @@ export default function HostingGuide() {
     },
     {
       id: 4,
-      title: 'Como Fazer as Atualizações',
-      description: 'Como atualizar o sistema sem qualquer complexidade depois de publicado.',
+      title: 'Vincular Seu Domínio Comprado na Hostinger',
+      description: 'Como apontar o seu próprio domínio (ex: suabarbearia.com.br) registrado na Hostinger para o sistema.',
       badge: 'Passo 4',
+      details: (
+        <div className="space-y-3 text-xs text-zinc-300">
+          <p>
+            Como você comprou o domínio na <strong className="text-yellow-400">Hostinger</strong>, você tem duas opções muito fáceis para colocá-lo no ar:
+          </p>
+          <div className="bg-[#0B0B0C] p-3 rounded-lg border border-zinc-900 space-y-3">
+            <div className="space-y-1.5">
+              <strong className="text-white block font-mono text-[11px] text-yellow-400">OPÇÃO 1: Vercel + Domínio Hostinger (Recomendado - 100% Grátis)</strong>
+              <ol className="list-decimal list-inside space-y-1 text-zinc-400 pl-1">
+                <li>No painel da Vercel, vá em <strong className="text-zinc-200">Settings &gt; Domains</strong> e adicione seu domínio (ex: <code className="text-yellow-400 font-mono">suabarbearia.com.br</code>).</li>
+                <li>No painel da Hostinger (hPanel), vá em <strong className="text-zinc-200">Domínios &gt; Editor de Zona DNS</strong>.</li>
+                <li>Edite ou crie o Registro <strong className="text-white font-mono">A</strong> com Tipo <code className="text-yellow-400">A</code>, Nome <code className="text-yellow-400">@</code> e Aponta para <code className="text-yellow-400">76.76.21.21</code>.</li>
+                <li>Edite ou crie o CNAME com Tipo <code className="text-white font-mono">CNAME</code>, Nome <code className="text-yellow-400">www</code> e Aponta para <code className="text-yellow-400">cname.vercel-dns.com</code>.</li>
+              </ol>
+            </div>
+
+            <div className="border-t border-zinc-900 pt-2 space-y-1.5">
+              <strong className="text-white block font-mono text-[11px] text-yellow-400">OPÇÃO 2: Hospedagem Direta na Hostinger (hPanel)</strong>
+              <ol className="list-decimal list-inside space-y-1 text-zinc-400 pl-1">
+                <li>No terminal do projeto na sua máquina, execute <code className="text-yellow-400 font-mono">npm run build</code> para gerar a pasta <code className="text-white font-mono">dist</code>.</li>
+                <li>No hPanel da Hostinger, vá em <strong className="text-zinc-200">Gerenciador de Arquivos &gt; public_html</strong>.</li>
+                <li>Envie todos os arquivos gerados dentro da pasta <code className="text-white font-mono">dist</code> para a raiz do <code className="text-white font-mono">public_html</code>.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 5,
+      title: 'Como Fazer as Atualizações Futuras',
+      description: 'Como atualizar o sistema sem qualquer complexidade depois de publicado.',
+      badge: 'Passo 5',
       details: (
         <div className="space-y-3 text-xs text-zinc-300">
           <p>
@@ -116,7 +149,7 @@ export default function HostingGuide() {
               <CheckCircle2 className="w-4 h-4" /> ATUALIZAÇÕES AUTOMÁTICAS (CI/CD)
             </div>
             <p className="text-zinc-400 leading-relaxed text-[11px]">
-              Toda vez que você usar o Google AI Studio para fazer melhorias no código e enviá-las para o seu repositório no GitHub, a Vercel percebe o novo código instantaneamente. Ela compila e publica a nova versão do site no mesmo link na nuvem. Você não precisa reinstalar nada nem re-subir arquivos manualmente!
+              Toda vez que você usar o Google AI Studio para fazer melhorias no código e enviá-las para o seu repositório no GitHub, a Vercel percebe o novo código instantaneamente e atualiza no seu domínio da Hostinger sozinho!
             </p>
           </div>
         </div>
@@ -238,8 +271,8 @@ export default function HostingGuide() {
                     <div className="px-4 pb-4 pt-1 border-t border-zinc-900/50">
                       {step.details}
                       <div className="mt-4 flex justify-between items-center text-[10px]">
-                        <span className="text-zinc-500">Etapa {step.id} de 4</span>
-                        {step.id < 4 && (
+                        <span className="text-zinc-500">Etapa {step.id} de 5</span>
+                        {step.id < 5 && (
                           <button
                             onClick={() => setActiveStep(step.id + 1)}
                             className="bg-zinc-800 hover:bg-zinc-700 text-yellow-500 hover:text-yellow-400 px-2.5 py-1 rounded font-bold flex items-center gap-1 transition"

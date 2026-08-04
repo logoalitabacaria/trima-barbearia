@@ -4,44 +4,104 @@
  */
 
 import React, { useState } from 'react';
-import { DollarSign, Wallet, Check, AlertCircle, Trash2, Clock, Eye, Info, Percent } from 'lucide-react';
-import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription } from '../types';
+import { DollarSign, Wallet, Check, AlertCircle, Trash2, Clock, Eye, Info, Percent, Printer, X, Copy } from 'lucide-react';
+import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription, Appointment } from '../types';
 
 interface CashierPanelProps {
+  currentUser?: User;
   comandas: Comanda[];
   users: User[];
   barberDetails: BarberDetail[];
   subscriptions: CustomerSubscription[];
+  appointments?: Appointment[];
   parameters: SystemParameters;
   onUpdateState: (key: string, val: any) => void;
 }
 
 export default function CashierPanel({
+  currentUser,
   comandas,
   users,
   barberDetails,
   subscriptions,
+  appointments = [],
   parameters,
   onUpdateState
 }: CashierPanelProps) {
   const [filterMode, setFilterMode] = useState<'PENDING' | 'PAID'>('PENDING');
   const [selectedCmdId, setSelectedCmdId] = useState<string | null>(null);
+  const [viewingReceiptComanda, setViewingReceiptComanda] = useState<Comanda | null>(null);
 
   // checkout form state
   const [discountVal, setDiscountVal] = useState('0');
-  const [paymentMethod, setPaymentMethod] = useState<'MONEY' | 'CARD' | 'PIX' | 'SUBSCRIPTION'>('PIX');
+  const [isRedeemingLoyalty, setIsRedeemingLoyalty] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>(() => {
+    const list = parameters?.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA'];
+    return list.includes('PIX') ? 'PIX' : (list[0] || 'PIX');
+  });
+
+  const selectedComanda = comandas.find(c => c.id === selectedCmdId);
+  const selectedCustomer = users.find(u => u.id === selectedComanda?.customerId);
+
+  // Auto-set payment method to ASSINATURA if comanda is marked as subscription use
+  React.useEffect(() => {
+    if (selectedComanda?.isSubscriptionUse || selectedComanda?.paymentMethod === 'ASSINATURA') {
+      setPaymentMethod('ASSINATURA');
+    }
+    setIsRedeemingLoyalty(false);
+  }, [selectedCmdId]);
 
   // Helpers
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  // FILTER COMANDAS AT CAIXA DESK
-  const displayedComandas = filterMode === 'PENDING'
-    ? comandas.filter(c => c.status === 'OPEN')
-    : comandas.filter(c => c.status === 'PAID');
+  // Helper to check if date string matches today's local date
+  const isToday = (dateStr?: string): boolean => {
+    if (!dateStr) return false;
+    const today = new Date();
+    const todayYMD = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const selectedComanda = comandas.find(c => c.id === selectedCmdId);
+    if (dateStr.startsWith(todayYMD)) return true;
+
+    if (dateStr.includes('/')) {
+      const parts = dateStr.trim().split(' ')[0].split('/');
+      if (parts.length === 3) {
+        const [d, m, y] = parts;
+        const formatted = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        if (formatted === todayYMD) return true;
+      }
+    }
+
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      return (
+        parsed.getFullYear() === today.getFullYear() &&
+        parsed.getMonth() === today.getMonth() &&
+        parsed.getDate() === today.getDate()
+      );
+    }
+
+    return false;
+  };
+
+  const isPaidToday = (c: Comanda): boolean => {
+    if (c.status !== 'PAID') return false;
+    const paidDate = c.completedAt || c.dispatchedAt || c.createdAt;
+    return isToday(paidDate);
+  };
+
+  // FILTER COMANDAS AT CAIXA DESK
+  const displayedComandas = (filterMode === 'PENDING'
+    ? comandas.filter(c => c.status === 'OPEN')
+    : comandas.filter(isPaidToday)
+  ).slice().sort((a, b) => {
+    if (a.readyForPayment && !b.readyForPayment) return -1;
+    if (!a.readyForPayment && b.readyForPayment) return 1;
+    const dateA = a.completedAt || a.dispatchedAt || a.createdAt;
+    const dateB = b.completedAt || b.dispatchedAt || b.createdAt;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
 
   // CHECKOUT ACTION: MARKS COMANDA AS PAID AND RE-CALCULATES COMMISSIONS
   const handleCheckoutComanda = (e: React.FormEvent) => {
@@ -57,24 +117,33 @@ export default function CashierPanel({
     const standardSrvRate = bDetail?.commissionRateStandard ?? parameters.defaultCommissionService;
     const subscriptionSrvRate = bDetail?.commissionRateSubscription ?? 0.35;
     const productCommissionRate = bDetail?.commissionRateProduct ?? parameters.defaultCommissionProduct; // e.g. 15% custom or default 10%
-    const tabacariaCommissionRate = bDetail?.commissionRateTabacaria ?? parameters.defaultCommissionTabacaria ?? 0;
 
     // 2. Compute dynamic item-by-item commission payout amounts
     let calculatedCommissionAmount = 0;
 
     selectedComanda.items.forEach(item => {
       const lineValue = item.quantity * item.unitPrice;
-      if (item.isTabacaria) {
-        // Tabacaria commission (standard or custom)
-        calculatedCommissionAmount += lineValue * tabacariaCommissionRate;
+      if (item.isVipService) {
+        // VIP service: 100% of the value goes to the barber (shop gets 0%)
+        calculatedCommissionAmount += lineValue;
       } else if (item.isProduct) {
         // Product commission (standard e.g. 10%)
         calculatedCommissionAmount += lineValue * productCommissionRate;
       } else {
         // Service commission
-        if (paymentMethod === 'SUBSCRIPTION') {
-          // If customer used subscription benefits, barber gets local recurring commission rate!
-          calculatedCommissionAmount += lineValue * subscriptionSrvRate;
+        if (paymentMethod === 'SUBSCRIPTION' || paymentMethod === 'ASSINATURA') {
+          // Find customer's active subscription to check plan discount percentage
+          const activeSub = subscriptions.find(s => s.customerId === selectedComanda.customerId && s.isActive);
+          let planDiscountPct = 0;
+          if (activeSub && activeSub.discountPercentage !== undefined && activeSub.discountPercentage > 0) {
+            planDiscountPct = activeSub.discountPercentage > 1 ? activeSub.discountPercentage / 100 : activeSub.discountPercentage;
+          } else {
+            // Default 12% discount for standard subscription plan (subDiscount3to4 = 0.12)
+            planDiscountPct = parameters.subDiscount3to4 ?? 0.12;
+          }
+          // Service value after plan discount
+          const discountedLineValue = lineValue * (1 - planDiscountPct);
+          calculatedCommissionAmount += discountedLineValue * subscriptionSrvRate;
         } else {
           calculatedCommissionAmount += lineValue * standardSrvRate;
         }
@@ -95,19 +164,23 @@ export default function CashierPanel({
           total: finalTotal,
           paymentMethod: paymentMethod,
           completedAt: new Date().toISOString(),
-          commissionAmount: parseFloat(calculatedCommissionAmount.toFixed(2))
+          commissionAmount: parseFloat(calculatedCommissionAmount.toFixed(2)),
+          closedBy: currentUser?.name || 'Caixa'
         };
       }
       return c;
     });
 
     // 4. Update appointment status (if linked) to COMPLETED
-    if (selectedComanda.appointmentId) {
-      onUpdateState('appointments', onGetCompletedAppointments(selectedComanda.appointmentId));
+    if (selectedComanda.appointmentId && appointments.length > 0) {
+      const updatedApts = appointments.map(a => 
+        a.id === selectedComanda.appointmentId ? { ...a, status: 'COMPLETED' as const, completedAt: new Date().toISOString() } : a
+      );
+      onUpdateState('appointments', updatedApts);
     }
 
     // 5. If paid by SUBSCRIPTION, deduct remaining times from active membership!
-    if (paymentMethod === 'SUBSCRIPTION') {
+    if (paymentMethod === 'SUBSCRIPTION' || paymentMethod === 'ASSINATURA') {
       const activeMember = subscriptions.find(s => s.customerId === selectedComanda.customerId && s.isActive);
       if (activeMember) {
         onUpdateState('subscriptions', subscriptions.map(s => {
@@ -123,22 +196,32 @@ export default function CashierPanel({
       }
     }
 
+    // 6. PROGRAMA DE FIDELIDADE: Credit points and deduct if redeemed
+    if (parameters.enableLoyalty !== false && selectedComanda.customerId) {
+      const ptsPerReal = parameters.loyaltyPointsPerReal || 1;
+      const pointsEarned = Math.floor(finalTotal * ptsPerReal);
+      const minToRedeem = parameters.loyaltyMinPointsRedeem || 100;
+
+      const updatedUsers = users.map(u => {
+        if (u.id === selectedComanda.customerId) {
+          const currentPts = u.loyaltyPoints || 0;
+          const ptsAfterRedemption = isRedeemingLoyalty ? Math.max(0, currentPts - minToRedeem) : currentPts;
+          return {
+            ...u,
+            loyaltyPoints: ptsAfterRedemption + pointsEarned
+          };
+        }
+        return u;
+      });
+      onUpdateState('users', updatedUsers);
+    }
+
     onUpdateState('comandas', updatedComandas);
     setSelectedCmdId(null);
     setDiscountVal('0');
+    setIsRedeemingLoyalty(false);
     setPaymentMethod('PIX');
-    alert('Comanda registrada como PAGA com sucesso! Comissão provisionada na ficha do barbeiro.');
-  };
-
-  const onGetCompletedAppointments = (aptId: string) => {
-    try {
-      const stored = localStorage.getItem('logo_ali_b2_appointments');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed.map((a: any) => a.id === aptId ? { ...a, status: 'COMPLETED' } : a);
-      }
-    } catch {}
-    return [];
+    alert('Comanda registrada como PAGA com sucesso! Comissão provisionada na ficha do barbeiro e Pontos de Fidelidade atualizados.');
   };
 
   return (
@@ -176,7 +259,7 @@ export default function CashierPanel({
             }}
             className={`px-3 py-1 rounded cursor-pointer ${filterMode === 'PAID' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400'}`}
           >
-            Faturadas hoje ({comandas.filter(c => c.status === 'PAID').length})
+            Faturadas hoje ({comandas.filter(isPaidToday).length})
           </button>
         </div>
       </div>
@@ -212,6 +295,17 @@ export default function CashierPanel({
                       {formatCurrency(c.total)}
                     </span>
                   </div>
+
+                  {c.readyForPayment && (
+                    <div className="mt-2 bg-emerald-950/90 text-emerald-400 border border-emerald-800/80 px-2.5 py-1 rounded-lg text-[9px] font-mono font-extrabold uppercase flex items-center justify-between shadow-sm animate-pulse">
+                      <span className="flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        SERVIÇO ENCERRADO
+                      </span>
+                      <span className="text-[8px] text-emerald-400/80">Despachado</span>
+                    </div>
+                  )}
+
                   <div className="pt-2.5 border-t border-zinc-900 mt-2.5 flex justify-between items-center text-[10px] text-zinc-500">
                     <span>{c.items.length} itens inclusos</span>
                     <span>Código {c.id.slice(-5)}</span>
@@ -232,6 +326,21 @@ export default function CashierPanel({
             </div>
           ) : (
             <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-6">
+              {/* Ready for payment banner */}
+              {selectedComanda.readyForPayment && (
+                <div className="bg-emerald-950/80 border-2 border-emerald-500/80 p-3.5 rounded-xl flex items-center gap-3 text-emerald-300 text-xs font-mono font-extrabold shadow-md">
+                  <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="block text-[10px] text-emerald-400 uppercase font-black tracking-wider">
+                      SERVIÇO ENCERRADO / DESPACHADO PELO BARBEIRO ({selectedComanda.barberName})
+                    </span>
+                    <span className="text-white text-xs">
+                      ✅ Atendimento concluído na cadeira! Liberado para receber o pagamento no caixa.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Header */}
               <div className="pb-4 border-b border-zinc-850 flex justify-between items-start">
                 <div>
@@ -239,11 +348,22 @@ export default function CashierPanel({
                   <h4 className="text-base text-white font-extrabold">{selectedComanda.customerName}</h4>
                   <p className="text-[10px] text-zinc-400 mt-0.5">Lançada por barbeiro: <strong>{selectedComanda.barberName}</strong> | Ref: {selectedComanda.id}</p>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                  selectedComanda.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500 animate-pulse'
-                }`}>
-                  {selectedComanda.status === 'PAID' ? 'Faturada/Paga' : 'Aguardando Checkout'}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                    selectedComanda.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500 animate-pulse'
+                  }`}>
+                    {selectedComanda.status === 'PAID' ? 'Faturada/Paga' : 'Aguardando Checkout'}
+                  </span>
+                  {parameters.enableReceipts !== false && (
+                    <button
+                      type="button"
+                      onClick={() => setViewingReceiptComanda(selectedComanda)}
+                      className="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Cupom Térmico
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Items Table */}
@@ -278,6 +398,43 @@ export default function CashierPanel({
               {/* Checkout inputs (only visible for pending) */}
               {selectedComanda.status === 'OPEN' && (
                 <form onSubmit={handleCheckoutComanda} className="space-y-4 pt-2 border-t border-zinc-850">
+                  {/* Loyalty Points Alert & Redemption Toggle */}
+                  {parameters.enableLoyalty !== false && selectedCustomer && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono">
+                      <div>
+                        <span className="text-amber-400 font-bold block">🏆 Programa de Fidelidade ({selectedCustomer.name})</span>
+                        <span className="text-zinc-400 text-[11px]">
+                          Pontos Acumulados: <strong className="text-white">{selectedCustomer.loyaltyPoints || 0} pts</strong>
+                        </span>
+                      </div>
+                      {(selectedCustomer.loyaltyPoints || 0) >= (parameters.loyaltyMinPointsRedeem || 100) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isRedeemingLoyalty) {
+                              setIsRedeemingLoyalty(false);
+                              setDiscountVal('0');
+                            } else {
+                              setIsRedeemingLoyalty(true);
+                              setDiscountVal((parameters.loyaltyRewardValue || 15).toString());
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase cursor-pointer transition ${
+                            isRedeemingLoyalty
+                              ? 'bg-emerald-500 text-black border border-emerald-400'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                          }`}
+                        >
+                          {isRedeemingLoyalty ? '✓ Desconto Aplicado (-R$ ' + (parameters.loyaltyRewardValue || 15) + ')' : '🎁 Resgatar R$ ' + (parameters.loyaltyRewardValue || 15) + ' de Desconto'}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-zinc-500 italic">
+                          Mínimo {parameters.loyaltyMinPointsRedeem || 100} pts para resgate
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Add Discount */}
                     <div>
@@ -299,13 +456,14 @@ export default function CashierPanel({
                       <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-widest block mb-1">Forma de Recebimento</label>
                       <select
                         value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value as any)}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
                         className="w-full bg-zinc-950 border border-zinc-850 rounded-lg py-1.5 px-3 text-xs text-white font-mono cursor-pointer"
                       >
-                        <option value="PIX">⚡ PIX instantâneo</option>
-                        <option value="CARD">💳 Cartão de Débito/Crédito</option>
-                        <option value="MONEY">💵 Dinheiro Físico</option>
-                        <option value="SUBSCRIPTION">🔄 Assinatura / Clube de Vantagem</option>
+                        {(parameters?.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA']).map(pm => (
+                          <option key={pm} value={pm}>
+                            {pm === 'PIX' ? '⚡ PIX instantâneo' : pm === 'CARTÃO' || pm === 'CARD' ? '💳 Cartão de Débito/Crédito' : pm === 'DINHEIRO' || pm === 'MONEY' ? '💵 Dinheiro Físico' : pm === 'ASSINATURA' || pm === 'SUBSCRIPTION' ? '🔄 Assinatura / Clube de Vantagem' : `💳 ${pm}`}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -332,6 +490,112 @@ export default function CashierPanel({
           )}
         </div>
       </div>
+
+      {/* THERMAL RECEIPT OVERLAY MODAL */}
+      {viewingReceiptComanda && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white text-black p-6 rounded-2xl max-w-sm w-full font-mono text-xs shadow-2xl relative space-y-4 text-left">
+            {/* Header */}
+            <div className="text-center border-b border-dashed border-zinc-400 pb-3 space-y-1">
+              <h3 className="font-bold text-base uppercase tracking-wider">{parameters.shopName || 'Trima Studio'}</h3>
+              <p className="text-[10px] text-zinc-600">{parameters.address || 'Rua Trima Studio, 777'}</p>
+              <p className="text-[10px] text-zinc-600">Tel: {parameters.phone || '(11) 98765-4321'}</p>
+              <div className="pt-2 text-[10px] font-bold text-zinc-800 uppercase tracking-widest">
+                *** COMPROVANTE DE CONSUMO ***
+              </div>
+            </div>
+
+            {/* Meta details */}
+            <div className="text-[10px] space-y-1 text-zinc-700 border-b border-dashed border-zinc-400 pb-3">
+              <p><strong>Comanda:</strong> #{viewingReceiptComanda.id.slice(-6).toUpperCase()}</p>
+              <p><strong>Cliente:</strong> {viewingReceiptComanda.customerName}</p>
+              <p><strong>Atendente:</strong> {viewingReceiptComanda.barberName}</p>
+              <p><strong>Data/Hora:</strong> {new Date(viewingReceiptComanda.completedAt || viewingReceiptComanda.createdAt).toLocaleString('pt-BR')}</p>
+              <p><strong>Status:</strong> {viewingReceiptComanda.status === 'PAID' ? 'PAGO / FATURADO' : 'EM ABERTO'}</p>
+            </div>
+
+            {/* Items */}
+            <div className="space-y-1.5 border-b border-dashed border-zinc-400 pb-3">
+              <div className="flex justify-between font-bold text-[10px] text-zinc-800 uppercase border-b border-zinc-300 pb-1">
+                <span>Item / Qtd</span>
+                <span>Total</span>
+              </div>
+              {viewingReceiptComanda.items.map((i, idx) => (
+                <div key={idx} className="flex justify-between text-[11px] text-zinc-800">
+                  <div>
+                    <span>{i.quantity}x {i.description}</span>
+                  </div>
+                  <span>{formatCurrency(i.quantity * i.unitPrice)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Totals */}
+            <div className="space-y-1 text-right text-zinc-800 border-b border-dashed border-zinc-400 pb-3">
+              <div className="flex justify-between text-[11px]">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(viewingReceiptComanda.subtotal)}</span>
+              </div>
+              {viewingReceiptComanda.discount ? (
+                <div className="flex justify-between text-[11px] text-red-600">
+                  <span>Desconto:</span>
+                  <span>- {formatCurrency(viewingReceiptComanda.discount)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between text-sm font-bold pt-1 text-black border-t border-zinc-300">
+                <span>TOTAL PAGO:</span>
+                <span>{formatCurrency(viewingReceiptComanda.total)}</span>
+              </div>
+              <div className="text-[10px] text-zinc-600 pt-0.5">
+                Forma: <strong>{viewingReceiptComanda.paymentMethod || 'PIX'}</strong>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center text-[10px] text-zinc-600 italic">
+              <p>{parameters.receiptFooterText || 'Obrigado pela preferência! Volte sempre.'}</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2 pt-2 border-t border-zinc-200">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full bg-black text-white hover:bg-zinc-800 py-2 rounded-xl font-bold uppercase text-[10px] flex items-center justify-center gap-1.5 cursor-pointer transition"
+              >
+                <Printer className="w-4 h-4" /> Imprimir Cupom
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const text = `*${parameters.shopName}*\n` +
+                    `Comprovante da Comanda #${viewingReceiptComanda.id.slice(-6).toUpperCase()}\n` +
+                    `Cliente: ${viewingReceiptComanda.customerName}\n` +
+                    `Atendente: ${viewingReceiptComanda.barberName}\n` +
+                    `Itens:\n` + viewingReceiptComanda.items.map(i => `- ${i.quantity}x ${i.description} (${formatCurrency(i.quantity * i.unitPrice)} )`).join('\n') +
+                    `\nSubtotal: ${formatCurrency(viewingReceiptComanda.subtotal)}\n` +
+                    (viewingReceiptComanda.discount ? `Desconto: -${formatCurrency(viewingReceiptComanda.discount)}\n` : '') +
+                    `*Total Pago: ${formatCurrency(viewingReceiptComanda.total)}*\n` +
+                    `Forma: ${viewingReceiptComanda.paymentMethod || 'PIX'}\n` +
+                    `\n_${parameters.receiptFooterText || 'Obrigado pela preferência!'}_`;
+                  navigator.clipboard.writeText(text);
+                  alert('Texto do comprovante copiado para a área de transferência! Pronto para enviar no WhatsApp.');
+                }}
+                className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-800 py-2 rounded-xl font-bold uppercase text-[10px] flex items-center justify-center gap-1.5 cursor-pointer transition border border-zinc-300"
+              >
+                <Copy className="w-4 h-4" /> Copiar Texto p/ WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingReceiptComanda(null)}
+                className="w-full text-zinc-500 hover:text-black py-1 font-bold text-[10px] cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

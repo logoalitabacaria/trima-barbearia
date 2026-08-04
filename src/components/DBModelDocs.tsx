@@ -325,7 +325,7 @@ CREATE INDEX idx_comanda_items_comanda ON comanda_items(comanda_id);
                 
                 <div className="space-y-3 text-xs text-zinc-300">
                   <p className="text-zinc-400">
-                    Por estar fisicamente anexa à <strong className="text-white">Logo Ali Tabacaria</strong>, a Barbearia opera de forma enxuta sem necessidade de hardware de caixa próprio:
+                    Por ser um estúdio integrado, o <strong className="text-white">Trima Studio</strong> opera de forma enxuta com fluxo de caixa próprio:
                   </p>
                   
                   <div className="relative pl-4 border-l-2 border-yellow-500/50 space-y-3.5 mt-2">
