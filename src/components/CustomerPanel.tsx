@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Scissors, Star, Check, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon } from 'lucide-react';
 import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner } from '../types';
 import { buildWhatsAppReminderUrl, formatPortalText } from '../utils/helpers';
-import PublicSEOComponent from './PublicSEOComponent';
 
 interface CustomerPanelProps {
   users: User[];
@@ -75,9 +74,6 @@ export default function CustomerPanel({
 
   // Carousel Slide State
   const [carouselSlideIndex, setCarouselSlideIndex] = useState(0);
-
-  // Collapsible Promos & Referral Section State (Default collapsed to reduce information overload)
-  const [showPromosSection, setShowPromosSection] = useState(false);
 
   const handleSendNPSFeedback = (e: React.FormEvent) => {
     e.preventDefault();
@@ -413,7 +409,7 @@ export default function CustomerPanel({
   const categoriesList = ['TODOS', ...Array.from(new Set(services.map(s => s.category || 'Outros')))];
 
   return (
-    <div className={`space-y-5 text-left max-w-3xl mx-auto font-sans p-3 sm:p-5 pb-24 rounded-3xl shadow-sm border transition-colors ${
+    <div className={`space-y-6 text-left max-w-6xl mx-auto font-sans p-4 sm:p-6 pb-24 rounded-3xl shadow-sm border transition-colors ${
       isDarkMode ? 'bg-slate-950 text-slate-100 border-slate-800' : 'bg-slate-50 text-slate-800 border-slate-200/80'
     }`}>
       
@@ -486,19 +482,15 @@ export default function CustomerPanel({
         </div>
 
         {activeSubscription ? (
-          <div className={`p-3 px-5 rounded-xl font-mono text-xs border shrink-0 ${
-            isDarkMode ? 'bg-amber-950/40 border-amber-800/80 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900'
-          }`}>
-            <span className={`block text-[9px] uppercase font-bold ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>Plano Ativo</span>
-            <span className={`font-extrabold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{activeSubscribedPlan?.name || 'Assinatura VIP'}</span>
-            <span className={`block text-[11px] font-semibold mt-0.5 ${isDarkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+          <div className="bg-amber-50 border border-amber-300 p-3 px-5 rounded-xl font-mono text-xs text-amber-900 shrink-0">
+            <span className="block text-[9px] uppercase font-bold text-amber-700">Plano Ativo</span>
+            <span className="font-extrabold text-sm text-slate-900">{activeSubscribedPlan?.name || 'Assinatura VIP'}</span>
+            <span className="block text-[11px] font-semibold mt-0.5 text-amber-800">
               Cortes Restantes: <strong>{activeSubscription.servicesRemaining}</strong>
             </span>
           </div>
         ) : (
-          <div className={`p-3.5 rounded-xl text-xs shrink-0 max-w-xs border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'
-          }`}>
+          <div className="bg-slate-100 border border-slate-200 p-3.5 rounded-xl text-slate-600 text-xs shrink-0 max-w-xs">
             {formatPortalText(parameters.customerPortalClubBannerText, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address) || '✨ Seja um assinante do clube e economize até 28% no seu visual mensal!'}
           </div>
         )}
@@ -621,185 +613,150 @@ export default function CustomerPanel({
         );
       })()}
 
-      {/* BLUCO COMPACTO COLLAPSÍVEL DE VANTAGENS, PROMOÇÕES E FIDELIDADE */}
-      {(parameters.enableReferralProgram !== false || (parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.some(p => p.isActive)) || parameters.enableLoyalty !== false) && (
-        <div className={`rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/90'}`}>
-          <button
-            type="button"
-            onClick={() => setShowPromosSection(prev => !prev)}
-            className="w-full p-3.5 px-4 flex items-center justify-between text-xs font-mono font-bold cursor-pointer transition rounded-2xl hover:bg-slate-500/5"
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-              <span className={isDarkMode ? 'text-amber-400' : 'text-slate-900'}>
-                🎁 Vantagens, Cupons & Programa de Fidelidade
+      {/* PROGRAMA DE INDICAÇÃO - INDIQUE E GANHE (Sem imagem antes do texto, texto editável) */}
+      {parameters.enableReferralProgram !== false && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-50 to-white border border-amber-200 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-extrabold text-slate-900 uppercase font-mono tracking-wider">
+                {parameters.referralTitle ? (
+                  formatPortalText(parameters.referralTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                ) : (
+                  'Indique um Amigo e Ganhe Desconto'
+                )}
+              </h3>
+              <span className="px-2 py-0.5 bg-amber-500 text-slate-950 text-[9px] font-bold font-mono uppercase rounded">
+                Ganhe R$ {(parameters.referralDiscountReferrer ?? 10).toFixed(2)}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
-                {showPromosSection ? 'Recolher' : 'Ver Ofertas'}
+            <p className="text-xs text-slate-600">
+              {parameters.referralDescription ? (
+                formatPortalText(parameters.referralDescription, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+              ) : (
+                <>Ao indicar um amigo, você ganha <strong>R$ {(parameters.referralDiscountReferrer ?? 10).toFixed(2)}</strong> de desconto e seu amigo ganha <strong>R$ {(parameters.referralDiscountReferred ?? 10).toFixed(2)}</strong> no primeiro corte!</>
+              )}
+            </p>
+            {parameters.referralRulesText && (
+              <p className="text-[11px] text-slate-500 italic font-mono">
+                {formatPortalText(parameters.referralRulesText, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)}
+              </p>
+            )}
+          </div>
+
+          <div className="bg-white border border-amber-200 p-3 rounded-xl flex items-center gap-2 font-mono text-xs shadow-xs shrink-0 w-full md:w-auto justify-between">
+            <div>
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Seu Código de Indicação:</span>
+              <span className="font-extrabold text-slate-900 text-sm tracking-wider">
+                {currentCustomer.referralCode || currentCustomer.id.slice(0, 8).toUpperCase()}
               </span>
-              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showPromosSection ? 'rotate-180 text-amber-500' : 'text-slate-400'}`} />
             </div>
-          </button>
-
-          {showPromosSection && (
-            <div className="p-4 pt-1 space-y-4 border-t border-slate-100 dark:border-slate-800/80">
-              {/* PROGRAMA DE INDICAÇÃO - INDIQUE E GANHE */}
-              {parameters.enableReferralProgram !== false && (
-                <div className={`p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'
-                }`}>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className={`text-xs font-extrabold uppercase font-mono tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                        {parameters.referralTitle ? (
-                          formatPortalText(parameters.referralTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
-                        ) : (
-                          'Indique um Amigo e Ganhe Desconto'
-                        )}
-                      </h3>
-                      <span className="px-2 py-0.5 bg-amber-500 text-slate-950 text-[9px] font-bold font-mono uppercase rounded">
-                        Ganhe R$ {(parameters.referralDiscountReferrer ?? 10).toFixed(2)}
-                      </span>
-                    </div>
-                    <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                      {parameters.referralDescription ? (
-                        formatPortalText(parameters.referralDescription, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
-                      ) : (
-                        <>Ao indicar um amigo, você ganha <strong>R$ {(parameters.referralDiscountReferrer ?? 10).toFixed(2)}</strong> e seu amigo ganha <strong>R$ {(parameters.referralDiscountReferred ?? 10).toFixed(2)}</strong>!</>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className={`p-2.5 rounded-lg flex items-center gap-2 font-mono text-xs shrink-0 w-full sm:w-auto justify-between border ${
-                    isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-amber-200'
-                  }`}>
-                    <div>
-                      <span className={`text-[8px] uppercase font-bold block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Seu Código:</span>
-                      <span className={`font-extrabold text-xs tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                        {currentCustomer.referralCode || currentCustomer.id.slice(0, 8).toUpperCase()}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const code = currentCustomer.referralCode || currentCustomer.id.slice(0, 8).toUpperCase();
-                        navigator.clipboard.writeText(code);
-                        alert(`Código de indicação ${code} copiado para a área de transferência! Compartilhe com seus amigos.`);
-                      }}
-                      className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-[10px] rounded-md flex items-center gap-1 cursor-pointer transition"
-                    >
-                      <Copy className="w-3 h-3" /> Copiar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* PROMOÇÕES ATIVAS DA BARBEARIA */}
-              {parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.filter(p => p.isActive).length > 0 && (
-                <div className={`p-4 rounded-xl space-y-2 border ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'
-                }`}>
-                  <div className="flex items-center gap-1.5 border-b pb-1.5 dark:border-slate-700/60 border-slate-200">
-                    <Tag className="w-3.5 h-3.5 text-amber-500" />
-                    <h3 className={`text-xs font-mono font-bold uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                      Cupons Especiais Ativos
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {parameters.promotions.filter(p => p.isActive).map(promo => (
-                      <div key={promo.id} className={`border rounded-lg p-2.5 text-left space-y-1 relative ${
-                        isDarkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white border-slate-200'
-                      }`}>
-                        <div className="flex items-center justify-between">
-                          <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold rounded uppercase border ${
-                            isDarkMode ? 'bg-amber-950/80 border-amber-800 text-amber-300' : 'bg-amber-100 border-amber-300 text-amber-800'
-                          }`}>
-                            CUPOM: {promo.code}
-                          </span>
-                          <span className="text-xs font-extrabold text-amber-500 font-mono">
-                            {promo.discountType === 'PERCENTAGE' ? `${promo.discountValue}% OFF` : `R$ ${promo.discountValue.toFixed(2)} OFF`}
-                          </span>
-                        </div>
-                        <h4 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{promo.title}</h4>
-                        <p className={`text-[10px] ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>{promo.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* PROGRAMA DE FIDELIDADE */}
-              {parameters.enableLoyalty !== false && (() => {
-                const points = currentCustomer.loyaltyPoints || 0;
-                const minToRedeem = parameters.loyaltyMinPointsRedeem || 100;
-                const rewardVal = parameters.loyaltyRewardValue || 15;
-                const progressPct = Math.min(100, Math.round((points / minToRedeem) * 100));
-                const canRedeem = points >= minToRedeem;
-
-                return (
-                  <div className={`p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border ${
-                    isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-xs">
-                        <Award className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-xs font-mono font-bold uppercase tracking-wider ${isDarkMode ? 'text-amber-400' : 'text-amber-900'}`}>
-                            🏆 Programa Fidelidade
-                          </h3>
-                          {canRedeem && (
-                            <span className="px-2 py-0.5 bg-emerald-500 text-black text-[9px] font-bold uppercase rounded font-mono">
-                              Prêmio Disponível!
-                            </span>
-                          )}
-                        </div>
-                        <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                          Você tem <strong className="text-amber-500 font-mono">{points} pts</strong>.
-                          {canRedeem
-                            ? ` 🎉 Resgate R$ ${rewardVal},00 de desconto no caixa!`
-                            : ` Faltam ${minToRedeem - points} pts para liberar R$ ${rewardVal},00.`}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className={`w-full sm:w-48 shrink-0 p-2.5 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-                    }`}>
-                      <div className={`flex justify-between text-[9px] font-mono font-bold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Progresso</span>
-                        <span>{points} / {minToRedeem} pts</span>
-                      </div>
-                      <div className={`w-full h-2 rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
-                        <div
-                          className="bg-amber-500 h-full rounded-full transition-all duration-500"
-                          style={{ width: `${progressPct}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                const code = currentCustomer.referralCode || currentCustomer.id.slice(0, 8).toUpperCase();
+                navigator.clipboard.writeText(code);
+                alert(`Código de indicação ${code} copiado para a área de transferência! Compartilhe com seus amigos.`);
+              }}
+              className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <Copy className="w-3.5 h-3.5" /> Copiar Código
+            </button>
+          </div>
         </div>
       )}
 
+      {/* PROMOÇÕES ATIVAS DA BARBEARIA */}
+      {parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.filter(p => p.isActive).length > 0 && (
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-3 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Tag className="w-4 h-4 text-amber-600" />
+            <h3 className="text-xs font-mono font-bold text-slate-900 uppercase tracking-wider">
+              Promoções e Cupons Especiais Ativos
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {parameters.promotions.filter(p => p.isActive).map(promo => (
+              <div key={promo.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left space-y-2 relative">
+                <div className="flex items-center justify-between">
+                  <span className="px-2 py-0.5 bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-mono font-bold rounded uppercase">
+                    CUPOM: {promo.code}
+                  </span>
+                  <span className="text-xs font-extrabold text-amber-700 font-mono">
+                    {promo.discountType === 'PERCENTAGE' ? `${promo.discountValue}% OFF` : `R$ ${promo.discountValue.toFixed(2)} OFF`}
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-slate-900">{promo.title}</h4>
+                <p className="text-[11px] text-slate-600 line-clamp-2">{promo.description}</p>
+                <div className="pt-1 text-[10px] text-slate-400 font-mono italic">
+                  Apresente o cupom ao barbeiro ou no caixa.
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PROGRAMA DE FIDELIDADE - WIDGET DE PONTOS */}
+      {parameters.enableLoyalty !== false && (() => {
+        const points = currentCustomer.loyaltyPoints || 0;
+        const minToRedeem = parameters.loyaltyMinPointsRedeem || 100;
+        const rewardVal = parameters.loyaltyRewardValue || 15;
+        const progressPct = Math.min(100, Math.round((points / minToRedeem) * 100));
+        const canRedeem = points >= minToRedeem;
+
+        return (
+          <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-50 border border-amber-300/80 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fadeIn">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-sm">
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-amber-900">
+                    🏆 Programa de Fidelidade Trima
+                  </h3>
+                  {canRedeem && (
+                    <span className="px-2 py-0.5 bg-emerald-500 text-black text-[9px] font-bold uppercase rounded font-mono animate-bounce">
+                      Prêmio Disponível!
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-700 mt-0.5">
+                  Você possui <strong className="text-amber-800 font-mono text-sm">{points} pontos</strong> acumulados.
+                  {canRedeem
+                    ? ` 🎉 Parabéns! Apresente sua conta no caixa para resgatar R$ ${rewardVal},00 de desconto no seu atendimento!`
+                    : ` Faltam apenas ${minToRedeem - points} pontos para liberar R$ ${rewardVal},00 de desconto.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full md:w-56 shrink-0 bg-white/80 p-3 rounded-xl border border-amber-200">
+              <div className="flex justify-between text-[10px] font-mono font-bold text-slate-700 mb-1">
+                <span>Progresso</span>
+                <span>{points} / {minToRedeem} pts</span>
+              </div>
+              <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                ></div>
+              </div>
+              <span className="text-[9px] text-slate-500 font-mono block mt-1 text-right">
+                {progressPct}% concluído
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Main Tab Switcher */}
-      <div className={`flex flex-wrap gap-2 p-1.5 rounded-xl border ${
-        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200/60 border-slate-300/80'
-      }`}>
+      <div className="flex flex-wrap gap-2 bg-slate-200/60 p-1.5 rounded-xl border border-slate-300/80">
         <button
           onClick={() => setActiveTab('agendar')}
           className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
             activeTab === 'agendar'
               ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -811,8 +768,6 @@ export default function CustomerPanel({
           className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
             activeTab === 'assinatura'
               ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -824,8 +779,6 @@ export default function CustomerPanel({
           className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
             activeTab === 'historico'
               ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -1480,39 +1433,33 @@ export default function CustomerPanel({
       {/* TAB 2: SUBSCRIPTIONS & CLUB BENEFITS */}
       {activeTab === 'assinatura' && (
         <div id="secao-clube-vip" className="space-y-6">
-          <div className={`p-6 rounded-2xl text-left space-y-2 shadow-sm border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900'
-          }`}>
-            <h3 className="text-base font-extrabold text-amber-500 font-mono flex items-center gap-2">
-              <Award className="w-5 h-5 text-amber-500" />
+          <div className="bg-white border border-slate-200/90 p-6 rounded-2xl text-left space-y-2 shadow-sm">
+            <h3 className="text-base font-extrabold text-slate-900 font-mono flex items-center gap-2">
+              <Award className="w-5 h-5 text-amber-600" />
               Clube de Assinatura Recorrente & Descontos
             </h3>
-            <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+            <p className="text-xs text-slate-600">
               Monte seu plano mensal sob medida. Quanto mais serviços adicionar ao seu pacote, maior é o desconto automático concedido!
             </p>
           </div>
 
           {activeSubscription ? (
-            <div className={`p-6 rounded-2xl text-left flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm border-2 ${
-              isDarkMode ? 'bg-slate-900 border-amber-500/80 text-slate-100' : 'bg-amber-50 border-amber-400 text-slate-900'
-            }`}>
+            <div className="bg-amber-50 border-2 border-amber-400 p-6 rounded-2xl text-left flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm">
               <div className="space-y-3 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="p-1 px-3 bg-amber-500 text-slate-950 text-xs font-black font-mono rounded-lg">
                     Assinante VIP Ativo
                   </span>
-                  <span className={`text-xs font-mono font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  <span className="text-xs text-slate-600 font-mono font-semibold">
                     Validade: {activeSubscription.startDate} até {activeSubscription.endDate}
                   </span>
                 </div>
                 
-                <h4 className={`text-lg font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                <h4 className="text-lg font-black text-slate-900">
                   {activeSubscribedPlan?.name || 'Sua Assinatura Personalizada'}
                 </h4>
 
-                <p className={`text-xs font-mono font-extrabold p-2.5 rounded-xl inline-block border ${
-                  isDarkMode ? 'bg-slate-800 border-slate-700 text-amber-300' : 'bg-amber-100 border-amber-300 text-amber-900'
-                }`}>
+                <p className="text-xs font-mono text-amber-900 font-extrabold bg-amber-100 border border-amber-300 p-2.5 rounded-xl inline-block">
                   Atendimentos restantes para este ciclo: {activeSubscription.servicesRemaining} cortes
                 </p>
               </div>
@@ -1525,39 +1472,35 @@ export default function CustomerPanel({
               </button>
             </div>
           ) : (
-            <div className={`p-6 rounded-2xl space-y-6 shadow-sm border ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-            }`}>
+            <div className="bg-white border border-slate-200 p-6 rounded-2xl space-y-6 shadow-sm">
               <div>
-                <h4 className={`text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 font-mono flex items-center gap-2">
                   🛠️ Monte Seu Pacote Mensal de Cortes & Barba
                 </h4>
-                <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                <p className="text-xs text-slate-600 mt-1">
                   Selecione quais serviços você deseja receber ao longo do mês:
                 </p>
               </div>
 
               {/* Tabela de Descontos Progressivos */}
-              <div className={`p-4 rounded-xl border ${
-                isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <span className="text-[10px] text-amber-500 uppercase font-mono font-extrabold block mb-2">Tabela de Descontos do Clube:</span>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-amber-700 uppercase font-mono font-extrabold block mb-2">Tabela de Descontos do Clube:</span>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>2 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 text-[10px] block">2 Serviços</span>
+                    <span className="text-sm font-black text-amber-600">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
                   </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>3 a 4 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 text-[10px] block">3 a 4 Serviços</span>
+                    <span className="text-sm font-black text-amber-600">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
                   </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>5 a 6 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 text-[10px] block">5 a 6 Serviços</span>
+                    <span className="text-sm font-black text-amber-600">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
                   </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>7+ Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 text-[10px] block">7+ Serviços</span>
+                    <span className="text-sm font-black text-amber-600">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
                   </div>
                 </div>
               </div>
@@ -1570,33 +1513,27 @@ export default function CustomerPanel({
 
                   return (
                     <div key={cat} className="space-y-2">
-                      <h5 className={`text-[11px] font-extrabold uppercase font-mono px-3 py-1.5 rounded-lg border-l-4 border-amber-500 ${
-                        isDarkMode ? 'bg-slate-800 text-amber-400' : 'bg-amber-50 text-amber-800'
-                      }`}>
+                      <h5 className="text-[11px] font-extrabold text-amber-800 uppercase font-mono bg-amber-50 px-3 py-1.5 rounded-lg border-l-4 border-amber-500">
                         {cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamentos' : cat}
                       </h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {catServices.map(srv => {
                           const qty = selectedServiceQuantities[srv.id] || 0;
                           return (
-                            <div key={srv.id} className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
-                              isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-                            }`}>
+                            <div key={srv.id} className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-center justify-between gap-3">
                               <div>
-                                <h6 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{srv.name}</h6>
-                                <p className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{formatCurrency(srv.price)} / atendimento</p>
+                                <h6 className="text-xs font-bold text-slate-900">{srv.name}</h6>
+                                <p className="text-[10px] text-slate-500 font-mono">{formatCurrency(srv.price)} / atendimento</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustServiceQuantity(srv.id, -1)}
-                                  className={`w-7 h-7 border rounded-lg font-bold flex items-center justify-center cursor-pointer ${
-                                    isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                                  }`}
+                                  className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg font-bold flex items-center justify-center cursor-pointer"
                                 >
                                   -
                                 </button>
-                                <span className="text-xs font-mono font-extrabold text-amber-500 w-5 text-center">{qty}</span>
+                                <span className="text-xs font-mono font-extrabold text-amber-700 w-5 text-center">{qty}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustServiceQuantity(srv.id, 1)}
@@ -1615,17 +1552,15 @@ export default function CustomerPanel({
               </div>
 
               {/* Resumo */}
-              <div className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${
-                isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-              }`}>
+              <div className="bg-slate-100 border border-slate-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="space-y-1 text-xs font-mono">
-                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Serviços Selecionados: <strong className={isDarkMode ? 'text-white' : 'text-slate-900'}>{totalQuantity}</strong></p>
-                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Valor de Tabela: <span className="line-through text-slate-400">{formatCurrency(rawTotalCost)}</span></p>
-                  <p className="text-emerald-500 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
+                  <p className="text-slate-600">Serviços Selecionados: <strong className="text-slate-900">{totalQuantity}</strong></p>
+                  <p className="text-slate-600">Valor de Tabela: <span className="line-through text-slate-400">{formatCurrency(rawTotalCost)}</span></p>
+                  <p className="text-emerald-700 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
                 </div>
                 <div className="text-left md:text-right">
-                  <span className={`text-[10px] uppercase font-mono font-bold block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Mensalidade Total</span>
-                  <span className="text-2xl font-black text-amber-500 font-mono">{formatCurrency(finalMonthlyCost)}</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-mono font-bold block">Mensalidade Total</span>
+                  <span className="text-2xl font-black text-amber-600 font-mono">{formatCurrency(finalMonthlyCost)}</span>
                 </div>
               </div>
 
@@ -1636,7 +1571,7 @@ export default function CustomerPanel({
                 className={`w-full font-bold text-xs py-3.5 rounded-xl cursor-pointer transition uppercase tracking-wider ${
                   totalQuantity > 0 
                     ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md' 
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 }`}
               >
                 Confirmar Assinatura Mensal
@@ -1649,30 +1584,22 @@ export default function CustomerPanel({
       {/* TAB 3: BOOKINGS HISTORY & CANCELLATION */}
       {activeTab === 'historico' && (
         <div id="secao-reservas" className="space-y-4">
-          <h3 className={`text-xs font-bold font-mono uppercase tracking-wider block text-left ${
-            isDarkMode ? 'text-slate-400' : 'text-slate-600'
-          }`}>
+          <h3 className="text-xs font-bold font-mono text-slate-600 uppercase tracking-wider block text-left">
             Histórico das Suas Marcações
           </h3>
 
           {myAppointments.length === 0 ? (
-            <div className={`p-8 rounded-xl text-center text-xs border ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
-            }`}>
+            <div className="bg-white border border-slate-200 p-8 rounded-xl text-center text-slate-500 text-xs">
               Você ainda não possui nenhum agendamento efetuado.
             </div>
           ) : (
             <div className="space-y-3">
               {/* Desktop Table View */}
-              <div className={`hidden md:block rounded-2xl overflow-hidden shadow-sm border ${
-                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
+              <div className="hidden md:block bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
-                      <tr className={`font-mono border-b ${
-                        isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}>
+                      <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-mono">
                         <th className="p-3">Ref ID</th>
                         <th className="p-3">Serviço</th>
                         <th className="p-3">Barbeiro</th>
@@ -1682,11 +1609,11 @@ export default function CustomerPanel({
                         <th className="p-3 text-right">Ação</th>
                       </tr>
                     </thead>
-                    <tbody className={`divide-y font-mono ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-100 text-slate-800'}`}>
+                    <tbody className="divide-y divide-slate-100 font-mono">
                       {myAppointments.slice().reverse().map(apt => (
-                        <tr key={apt.id} className={isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}>
-                          <td className={`p-3 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{apt.id.slice(-5)}</td>
-                          <td className={`p-3 font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <tr key={apt.id} className="hover:bg-slate-50 text-slate-800">
+                          <td className="p-3 text-[10px] text-slate-400">{apt.id.slice(-5)}</td>
+                          <td className="p-3 font-bold text-slate-900">
                             <div>{apt.serviceName}</div>
                             {apt.isSubscriptionUse && (
                               <span className="inline-block mt-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[9px] rounded font-mono">
@@ -1696,7 +1623,7 @@ export default function CustomerPanel({
                           </td>
                           <td className="p-3">{apt.barberName}</td>
                           <td className="p-3">{apt.date}</td>
-                          <td className="p-3 text-amber-500 font-bold">{apt.time}</td>
+                          <td className="p-3 text-amber-700 font-bold">{apt.time}</td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded ${
                               apt.status === 'SCHEDULED' ? 'bg-amber-100 text-amber-800' :
@@ -1729,13 +1656,11 @@ export default function CustomerPanel({
               {/* Mobile Cards View */}
               <div className="grid grid-cols-1 gap-3 md:hidden">
                 {myAppointments.slice().reverse().map(apt => (
-                  <div key={apt.id} className={`p-4 rounded-2xl space-y-3 shadow-sm text-left border ${
-                    isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-                  }`}>
+                  <div key={apt.id} className="bg-white border border-slate-200 p-4 rounded-2xl space-y-3 shadow-sm text-left">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className={`text-[10px] font-mono block ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>ID: #{apt.id.slice(-5)}</span>
-                        <h4 className={`font-extrabold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{apt.serviceName}</h4>
+                        <span className="text-[10px] font-mono text-slate-400 block">ID: #{apt.id.slice(-5)}</span>
+                        <h4 className="font-extrabold text-sm text-slate-900">{apt.serviceName}</h4>
                       </div>
                       <span className={`px-2.5 py-0.5 text-[10px] uppercase font-mono font-bold rounded-lg ${
                         apt.status === 'SCHEDULED' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
@@ -1749,16 +1674,14 @@ export default function CustomerPanel({
                       </span>
                     </div>
 
-                    <div className={`grid grid-cols-2 gap-2 text-xs font-mono p-2.5 rounded-xl border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'
-                    }`}>
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                       <div>
-                        <span className={`text-[9px] block uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`}>Barbeiro</span>
-                        <span className={`font-bold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{apt.barberName}</span>
+                        <span className="text-[9px] text-slate-400 block uppercase font-bold">Barbeiro</span>
+                        <span className="font-bold text-slate-800">{apt.barberName}</span>
                       </div>
                       <div>
-                        <span className={`text-[9px] block uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`}>Data & Horário</span>
-                        <span className="font-bold text-amber-500">{apt.date} às {apt.time}</span>
+                        <span className="text-[9px] text-slate-400 block uppercase font-bold">Data & Horário</span>
+                        <span className="font-bold text-amber-700">{apt.date} às {apt.time}</span>
                       </div>
                     </div>
 
@@ -1786,16 +1709,14 @@ export default function CustomerPanel({
 
       {/* NPS SURVEY CARD (Escala 1 a 5) */}
       {parameters.enableNPS !== false && (
-        <div className={`p-6 rounded-2xl space-y-4 shadow-sm text-left border ${
-          isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-        }`}>
-          <div className={`flex items-center gap-2 border-b pb-3 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl space-y-4 shadow-sm text-left">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
             <div>
-              <h3 className={`text-sm font-extrabold font-mono ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+              <h3 className="text-sm font-extrabold text-slate-900 font-mono">
                 {parameters.npsTitle || 'Avalie Sua Experiência (Pesquisa NPS)'}
               </h3>
-              <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+              <p className="text-xs text-slate-600">
                 {parameters.npsQuestion || 'Em uma escala de 1 a 5, como foi o seu atendimento em nosso estúdio?'}
               </p>
             </div>
@@ -1809,7 +1730,7 @@ export default function CustomerPanel({
           ) : (
             <form onSubmit={handleSendNPSFeedback} className="space-y-4">
               <div>
-                <label className={`text-[10px] font-mono uppercase font-bold block mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                <label className="text-[10px] text-slate-500 font-mono uppercase font-bold block mb-2">
                   Escolha sua nota (1 = Insatisfeito, 5 = Excelente):
                 </label>
                 <div className="grid grid-cols-5 gap-2">
@@ -1831,8 +1752,6 @@ export default function CustomerPanel({
                             : item.val === 3
                               ? 'bg-amber-500 text-slate-950 border-amber-600 scale-105 shadow-md font-black'
                               : 'bg-red-500 text-white border-red-600 scale-105 shadow-md font-black'
-                          : isDarkMode
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                           : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
                       }`}
                     >
@@ -1846,15 +1765,13 @@ export default function CustomerPanel({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className={`text-[10px] font-mono uppercase font-bold block mb-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <label className="text-[10px] text-slate-500 font-mono uppercase font-bold block mb-1">
                     Profissional que Atendeu (Opcional):
                   </label>
                   <select
                     value={npsBarberId}
                     onChange={e => setNpsBarberId(e.target.value)}
-                    className={`w-full rounded-xl py-2 px-3 text-xs font-mono cursor-pointer outline-none focus:border-amber-500 border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 font-mono cursor-pointer outline-none focus:border-amber-500"
                   >
                     <option value="">Selecione se desejar...</option>
                     {barbers.map(b => (
@@ -1866,7 +1783,7 @@ export default function CustomerPanel({
                 </div>
 
                 <div>
-                  <label className={`text-[10px] font-mono uppercase font-bold block mb-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <label className="text-[10px] text-slate-500 font-mono uppercase font-bold block mb-1">
                     Comentário ou Sugestão (Opcional):
                   </label>
                   <input
@@ -1874,9 +1791,7 @@ export default function CustomerPanel({
                     value={npsComment}
                     onChange={e => setNpsComment(e.target.value)}
                     placeholder="O que mais gostou ou pode melhorar?"
-                    className={`w-full rounded-xl py-2 px-3 text-xs outline-none focus:border-amber-500 border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -1888,7 +1803,7 @@ export default function CustomerPanel({
                   className={`px-5 py-2.5 rounded-xl text-xs font-extrabold uppercase font-mono tracking-wider transition cursor-pointer ${
                     npsScore !== null
                       ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >
                   Enviar Avaliação
@@ -1900,17 +1815,13 @@ export default function CustomerPanel({
       )}
 
       {/* LOCALIZAÇÃO (GOOGLE MAPS) E REDES SOCIAIS */}
-      <div className={`p-5 rounded-2xl space-y-4 shadow-sm text-left border ${
-        isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-      }`}>
-        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b pb-3 ${
-          isDarkMode ? 'border-slate-800' : 'border-slate-100'
-        }`}>
+      <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm text-left">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
-            <h3 className={`text-sm font-extrabold font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-              <MapPin className="w-4 h-4 text-amber-500" /> Localização do Estúdio
+            <h3 className="text-sm font-extrabold text-slate-900 font-mono flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-amber-600" /> Localização do Estúdio
             </h3>
-            <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>{parameters.address || 'Endereço da Barbearia'}</p>
+            <p className="text-xs text-slate-600 mt-0.5">{parameters.address || 'Endereço da Barbearia'}</p>
           </div>
 
           <a
@@ -1927,30 +1838,24 @@ export default function CustomerPanel({
 
         {/* REDES SOCIAIS */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className={`text-xs font-mono font-bold uppercase mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Redes Sociais:</span>
+          <span className="text-xs font-mono font-bold text-slate-500 uppercase mr-1">Redes Sociais:</span>
           {parameters.whatsappUrl && (
-            <a href={parameters.whatsappUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800 hover:bg-emerald-900/60' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-            }`}>
+            <a href={parameters.whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
               <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
             </a>
           )}
           {parameters.instagramUrl && (
-            <a href={parameters.instagramUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-pink-950/60 text-pink-300 border-pink-800 hover:bg-pink-900/60' : 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100'
-            }`}>
+            <a href={parameters.instagramUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
               <Instagram className="w-3.5 h-3.5" /> Instagram
             </a>
           )}
           {parameters.facebookUrl && (
-            <a href={parameters.facebookUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-blue-950/60 text-blue-300 border-blue-800 hover:bg-blue-900/60' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-            }`}>
+            <a href={parameters.facebookUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
               <Facebook className="w-3.5 h-3.5" /> Facebook
             </a>
           )}
           {parameters.tiktokUrl && (
-            <a href={parameters.tiktokUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
+            <a href={parameters.tiktokUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
               🎵 TikTok
             </a>
           )}
@@ -1958,55 +1863,27 @@ export default function CustomerPanel({
       </div>
 
       {/* RODAPÉ DO PORTAL DO CLIENTE */}
-      <div className={`border-t pt-4 mt-6 text-center text-xs font-sans ${isDarkMode ? 'border-slate-800 text-slate-400' : 'border-slate-200/80 text-slate-500'}`}>
+      <div className="border-t border-slate-200/80 pt-4 mt-6 text-center text-xs text-slate-500 font-sans">
         {parameters.customerPortalFooterText ? (
-          <p className={`font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+          <p className="font-medium text-slate-600">
             {formatPortalText(parameters.customerPortalFooterText, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)}
           </p>
         ) : (
-          <p className="font-mono text-[11px]">
+          <p className="font-mono text-[11px] text-slate-400">
             {parameters.shopName} • {parameters.address} • Suporte: {parameters.phone}
           </p>
         )}
       </div>
 
-      {/* SEÇÃO PÚBLICA INDEXÁVEL DE SEO DO TRIMA STUDIO */}
-      <div className="mt-12 border-t border-slate-800/80 pt-8">
-        <PublicSEOComponent
-          services={services}
-          plans={plans}
-          parameters={parameters}
-          onSelectServiceToBook={(srv) => {
-            setBookingServiceId(srv.id);
-            setBookingStep(2);
-            setActiveTab('agendar');
-            const bookingEl = document.getElementById('secao-agendamento');
-            if (bookingEl) bookingEl.scrollIntoView({ behavior: 'smooth' });
-          }}
-          onOpenBookingWizard={() => {
-            setActiveTab('agendar');
-            const bookingEl = document.getElementById('secao-agendamento');
-            if (bookingEl) bookingEl.scrollIntoView({ behavior: 'smooth' });
-          }}
-          onOpenLoginModal={onOpenLoginModal}
-        />
-      </div>
-
       {/* MENU DE FACILIDADES DE ACESSO FIXO NA PARTE INFERIOR DA TELA */}
-      <div className={`fixed bottom-0 left-0 right-0 z-50 backdrop-blur-md border-t py-2.5 px-3 flex justify-around items-center transition-colors ${
-        isDarkMode
-          ? 'bg-slate-950/95 border-slate-800 text-slate-100 shadow-[0_-4px_25px_rgba(0,0,0,0.5)]'
-          : 'bg-white/95 border-slate-200 text-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.08)]'
-      }`}>
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 py-2.5 px-3 shadow-[0_-4px_25px_rgba(0,0,0,0.3)] flex justify-around items-center">
         <button
           type="button"
           onClick={() => handleNavigateTab('agendar', 'secao-agendamento')}
           className={`flex-1 max-w-[95px] py-1.5 px-2 rounded-xl text-[10px] font-bold font-mono flex flex-col items-center gap-1 transition-all cursor-pointer ${
             activeTab === 'agendar'
               ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-105'
-              : isDarkMode
-              ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Scissors className="w-4 h-4" />
@@ -2019,9 +1896,7 @@ export default function CustomerPanel({
           className={`flex-1 max-w-[95px] py-1.5 px-2 rounded-xl text-[10px] font-bold font-mono flex flex-col items-center gap-1 transition-all cursor-pointer ${
             activeTab === 'assinatura'
               ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-105'
-              : isDarkMode
-              ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Award className="w-4 h-4" />
@@ -2034,9 +1909,7 @@ export default function CustomerPanel({
           className={`flex-1 max-w-[95px] py-1.5 px-2 rounded-xl text-[10px] font-bold font-mono flex flex-col items-center gap-1 transition-all cursor-pointer ${
             activeTab === 'historico'
               ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-105'
-              : isDarkMode
-              ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Clock className="w-4 h-4" />
@@ -2047,13 +1920,9 @@ export default function CustomerPanel({
           href={parameters.whatsappUrl || `https://wa.me/${(parameters.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent('Olá! Gostaria de falar com o atendimento da barbearia.')}`}
           target="_blank"
           rel="noopener noreferrer"
-          className={`flex-1 max-w-[95px] py-1.5 px-2 rounded-xl text-[10px] font-bold font-mono flex flex-col items-center gap-1 transition-all cursor-pointer shadow-xs border ${
-            isDarkMode
-              ? 'text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border-emerald-800/80'
-              : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
-          }`}
+          className="flex-1 max-w-[95px] py-1.5 px-2 rounded-xl text-[10px] font-bold font-mono text-emerald-400 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800/80 flex flex-col items-center gap-1 transition-all cursor-pointer shadow-xs"
         >
-          <MessageCircle className="w-4 h-4 text-emerald-500" />
+          <MessageCircle className="w-4 h-4 text-emerald-400" />
           <span>WhatsApp</span>
         </a>
       </div>

@@ -11,8 +11,8 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   closeTime: "20:00",
   defaultCommissionService: 0.50, // 50%
   defaultCommissionProduct: 0.10, // 10%
-  address: "Presidente Arthur da Costa e Silva, 379",
-  phone: "+55 11 92598-0946",
+  address: "Rua Trima Studio, 777",
+  phone: "(11) 98765-4321",
   primaryColor: "#eab308",
   backgroundColor: "#000000",
   subDiscount2: 0.05,
@@ -156,152 +156,7 @@ export const INITIAL_USERS: User[] = [
 
 export const INITIAL_BARBER_DETAILS: BarberDetail[] = [];
 
-export const INITIAL_SERVICES: Service[] = [
-  {
-    id: 'srv-1',
-    name: 'Corte Masculino',
-    price: 50,
-    durationMinutes: 45,
-    category: 'HAIR',
-    description: 'Corte de cabelo tradicional ou moderno, alinhamento dos fios na tesoura e máquina com acerto do pezinho.',
-    isActive: true
-  },
-  {
-    id: 'srv-2',
-    name: 'Corte Degradê (Fade)',
-    price: 55,
-    durationMinutes: 45,
-    category: 'HAIR',
-    description: 'Corte estilo degradê em transição suave (Low, Mid, High Fade ou Navalhado) para um acabamento impecável.',
-    isActive: true
-  },
-  {
-    id: 'srv-3',
-    name: 'Corte Premium',
-    price: 70,
-    durationMinutes: 60,
-    category: 'HAIR',
-    description: 'Experiência completa com lavagem capilar, corte estilizado na tesoura e navalha, massagem craniana e finalização com pomada especial.',
-    isActive: true
-  },
-  {
-    id: 'srv-4',
-    name: 'Corte na Máquina',
-    price: 35,
-    durationMinutes: 30,
-    category: 'HAIR',
-    description: 'Corte prático e uniforme utilizando até dois pentes na máquina com acabamento de pezinho.',
-    isActive: true
-  },
-  {
-    id: 'srv-5',
-    name: 'Barba Clássica',
-    price: 40,
-    durationMinutes: 30,
-    category: 'BEARD',
-    description: 'Modelagem e alinhamento de barba na tesoura e máquina com acabamento das linhas da bochecha e pescoço.',
-    isActive: true
-  },
-  {
-    id: 'srv-6',
-    name: 'Barba na Tesoura',
-    price: 45,
-    durationMinutes: 35,
-    category: 'BEARD',
-    description: 'Aparo artesanal de barba longa e volumosa realizado exclusivamente na tesoura para o caimento perfeito.',
-    isActive: true
-  },
-  {
-    id: 'srv-7',
-    name: 'Barboterapia',
-    price: 60,
-    durationMinutes: 45,
-    category: 'BEARD',
-    description: 'Tratamento relaxante com aplicação de toalha quente, óleos emolientes, barbear com navalha e massagem pós-barba.',
-    isActive: true
-  },
-  {
-    id: 'srv-8',
-    name: 'Barboterapia com Ozônio',
-    price: 75,
-    durationMinutes: 50,
-    category: 'BEARD',
-    description: 'Ritual de barboterapia potencializado com vapor de ozônio para abrir os poros, higienizar profundamente e acalmar a pele.',
-    isActive: true
-  },
-  {
-    id: 'srv-9',
-    name: 'Combo Corte e Barba',
-    price: 85,
-    durationMinutes: 75,
-    category: 'COMBO',
-    description: 'Alinhamento completo do visual unindo corte masculino personalizado e barba esculpida.',
-    isActive: true
-  },
-  {
-    id: 'srv-10',
-    name: 'Design de Sobrancelha',
-    price: 25,
-    durationMinutes: 20,
-    category: 'TREATMENT',
-    description: 'Limpeza e alinhamento de sobrancelhas masculinas na navalha ou tesoura com visual natural.',
-    isActive: true
-  },
-  {
-    id: 'srv-11',
-    name: 'Pezinho e Acabamento',
-    price: 20,
-    durationMinutes: 15,
-    category: 'HAIR',
-    description: 'Manutenção do contorno do corte, nuca e costeletas para manter o cabelo sempre limpo.',
-    isActive: true
-  },
-  {
-    id: 'srv-12',
-    name: 'Finalização Capilar',
-    price: 20,
-    durationMinutes: 15,
-    category: 'HAIR',
-    description: 'Modelagem e textura do cabelo utilizando pomadas mate, efeito molhado ou sprays de fixação profissional.',
-    isActive: true
-  },
-  {
-    id: 'srv-13',
-    name: 'Luzes Masculinas',
-    price: 90,
-    durationMinutes: 90,
-    category: 'TREATMENT',
-    description: 'Mechas descoloridas e iluminação capilar com touca para dar contraste e estilo ao penteado.',
-    isActive: true
-  },
-  {
-    id: 'srv-14',
-    name: 'Platinado Masculino',
-    price: 130,
-    durationMinutes: 120,
-    category: 'TREATMENT',
-    description: 'Descoloração global e matização platinada branco neve com produtos de alta proteção e reconstrução.',
-    isActive: true
-  },
-  {
-    id: 'srv-15',
-    name: 'Selagem Capilar',
-    price: 110,
-    durationMinutes: 90,
-    category: 'TREATMENT',
-    description: 'Alinhamento térmico capilar que reduz o frizz, disciplina fios rebeldes e proporciona brilho e maciez.',
-    isActive: true
-  },
-  {
-    id: 'srv-16',
-    name: 'Tratamentos Capilares',
-    price: 60,
-    durationMinutes: 40,
-    category: 'TREATMENT',
-    description: 'Hidratação profunda e reconstrução capilar com ampolas nutritivas para recuperar cabelos ressecados.',
-    isActive: true
-  }
-];
+export const INITIAL_SERVICES: Service[] = [];
 
 export const INITIAL_PRODUCTS: Product[] = [];
 

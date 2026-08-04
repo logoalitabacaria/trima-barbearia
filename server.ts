@@ -195,17 +195,6 @@ Retorne APENAS o texto livre de resposta final na primeira pessoa do plural (nó
     }
   });
 
-  // Explicit SEO static routes
-  app.get("/robots.txt", (req, res) => {
-    res.type("text/plain");
-    res.sendFile(path.join(process.cwd(), "public", "robots.txt"));
-  });
-
-  app.get("/sitemap.xml", (req, res) => {
-    res.type("application/xml");
-    res.sendFile(path.join(process.cwd(), "public", "sitemap.xml"));
-  });
-
   // Vite integration middleware: Development vs Production mode
   if (process.env.NODE_ENV !== "production") {
     console.log("Setting up Vite server middleware in Development Mode...");
