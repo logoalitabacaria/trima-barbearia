@@ -383,9 +383,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowLoginModal(true)}
-                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-extrabold text-xs uppercase font-mono rounded-xl transition cursor-pointer flex items-center gap-2 shadow-sm"
+                  className="px-2.5 py-1 bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-[11px] uppercase font-mono rounded-lg transition cursor-pointer flex items-center gap-1 shadow-xs"
                 >
-                  <UserCheck className="w-4 h-4" /> Entrar / Cadastrar
+                  <UserCheck className="w-3.5 h-3.5" /> Entrar / Cadastrar
                 </button>
               </div>
             )}
