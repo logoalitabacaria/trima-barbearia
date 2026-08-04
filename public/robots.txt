@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /painel
+Disallow: /configuracoes
+
+Sitemap: https://www.trimastudio.com.br/sitemap.xml

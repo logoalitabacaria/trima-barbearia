@@ -88,6 +88,10 @@ export interface Service {
   durationMinutes: number;
   description: string;
   category: string;
+  isActive?: boolean;
+  benefits?: string;
+  imageUrl?: string;
+  slug?: string;
 }
 
 export interface Product {
