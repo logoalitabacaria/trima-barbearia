@@ -200,6 +200,13 @@ const DEFAULT_SEO_SERVICES = [
   }
 ];
 
+const CATEGORY_BENEFITS: Record<string, string> = {
+  HAIR: 'Corte e acabamento realizados de acordo com o estilo escolhido pelo cliente.',
+  BEARD: 'Alinhamento e cuidado da barba com acabamento profissional.',
+  COMBO: 'Praticidade para cuidar do cabelo e da barba no mesmo atendimento.',
+  TREATMENT: 'Tratamento personalizado de acordo com o serviço selecionado.'
+};
+
 export default function PublicSEOComponent({
   services,
   plans,
@@ -455,13 +462,13 @@ export default function PublicSEOComponent({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayServices.map((service, index) => {
-              const fallback = DEFAULT_SEO_SERVICES[index % DEFAULT_SEO_SERVICES.length];
               const name = service.name;
               const price = service.price ? `R$ ${Number(service.price).toFixed(2).replace('.', ',')}` : 'Consulte';
               const duration = service.durationMinutes ? `${service.durationMinutes} min` : '45 min';
-              const desc = service.description || fallback.description;
-              const benefits = (service as any).benefits || fallback.benefits;
-              const imgUrl = (service as any).imageUrl || fallback.imageUrl;
+              const categoryFallback = DEFAULT_SEO_SERVICES.find(item => item.category === service.category) || DEFAULT_SEO_SERVICES[0];
+              const desc = service.description?.trim() || `Conheça o serviço ${name} do Trima Studio e consulte os horários disponíveis para agendamento online.`;
+              const benefits = (service as any).benefits || CATEGORY_BENEFITS[service.category] || 'Atendimento personalizado realizado pela equipe do Trima Studio.';
+              const imgUrl = (service as any).imageUrl || categoryFallback.imageUrl;
 
               return (
                 <article
