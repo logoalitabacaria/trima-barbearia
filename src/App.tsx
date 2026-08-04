@@ -149,6 +149,20 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Dynamic SEO Robots Meta Tag protection for Private Panels vs Public Pages
+  useEffect(() => {
+    const metaRobots = document.querySelector('meta[name="robots"]');
+    if (activeTab === 'admin' || activeTab === 'barbeiro' || activeTab === 'caixa') {
+      if (metaRobots) {
+        metaRobots.setAttribute('content', 'noindex, nofollow');
+      }
+    } else {
+      if (metaRobots) {
+        metaRobots.setAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+      }
+    }
+  }, [activeTab]);
+
   // Helper trigger to update state chunks easily and sync to Firestore
   const handleUpdateState = async (key: string, val: any) => {
     let previousList: any[] = [];

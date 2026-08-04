@@ -3,14 +3,110 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <title>Logo Ali Barbearia & Tabacaria</title>
+    <meta name="theme-color" content="#0f172a" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Trima Studio | Barbearia, Corte Masculino e Barba</title>
+    <meta
+      name="description"
+      content="Trima Studio: barbearia especializada em corte masculino, barba, barboterapia, tratamentos e combos. Agende seu horário online no Trima Studio."
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://www.trimastudio.com.br/" />
+
+    <!-- Favicon & PWA App Icons -->
+    <link rel="icon" type="image/jpeg" href="/og-trima-studio.jpg" />
+    <link rel="apple-touch-icon" href="/og-trima-studio.jpg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:site_name" content="Trima Studio" />
+    <meta property="og:title" content="Trima Studio | Barbearia, Corte Masculino e Barba" />
+    <meta
+      property="og:description"
+      content="Trima Studio: barbearia especializada em corte masculino, barba, barboterapia, tratamentos e combos. Agende seu horário online."
+    />
+    <meta property="og:url" content="https://www.trimastudio.com.br/" />
+    <meta property="og:image" content="https://www.trimastudio.com.br/og-trima-studio.jpg" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trima Studio | Barbearia, Corte Masculino e Barba" />
+    <meta
+      name="twitter:description"
+      content="Trima Studio: barbearia especializada em corte masculino, barba, barboterapia e agendamento online."
+    />
+    <meta name="twitter:image" content="https://www.trimastudio.com.br/og-trima-studio.jpg" />
+
+    <!-- Structured Data JSON-LD (Schema.org @graph with BarberShop, WebSite & WebPage) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "BarberShop",
+          "@id": "https://www.trimastudio.com.br/#barbershop",
+          "name": "Trima Studio",
+          "url": "https://www.trimastudio.com.br/",
+          "image": "https://www.trimastudio.com.br/og-trima-studio.jpg",
+          "logo": "https://www.trimastudio.com.br/og-trima-studio.jpg",
+          "telephone": "+5511925980946",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Presidente Arthur da Costa e Silva, 379",
+            "addressCountry": "BR"
+          },
+          "sameAs": [
+            "https://instagram.com/trimastudiobr",
+            "https://facebook.com/trimastudiobr"
+          ],
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Serviços do Trima Studio",
+            "itemListElement": [
+              {
+                "@type": "OfferCatalog",
+                "name": "Corte Masculino"
+              },
+              {
+                "@type": "OfferCatalog",
+                "name": "Barba e Barboterapia"
+              },
+              {
+                "@type": "OfferCatalog",
+                "name": "Combos de Corte e Barba"
+              },
+              {
+                "@type": "OfferCatalog",
+                "name": "Tratamentos Capilares"
+              }
+            ]
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://www.trimastudio.com.br/#website",
+          "url": "https://www.trimastudio.com.br/",
+          "name": "Trima Studio",
+          "description": "Barbearia especializada em corte masculino, barba e agendamento online."
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://www.trimastudio.com.br/#webpage",
+          "url": "https://www.trimastudio.com.br/",
+          "name": "Trima Studio | Barbearia, Corte Masculino e Barba",
+          "isPartOf": {
+            "@id": "https://www.trimastudio.com.br/#website"
+          }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
