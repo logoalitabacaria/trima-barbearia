@@ -200,13 +200,6 @@ const DEFAULT_SEO_SERVICES = [
   }
 ];
 
-const CATEGORY_BENEFITS: Record<string, string> = {
-  HAIR: 'Corte e acabamento realizados de acordo com o estilo escolhido pelo cliente.',
-  BEARD: 'Alinhamento e cuidado da barba com acabamento profissional.',
-  COMBO: 'Praticidade para cuidar do cabelo e da barba no mesmo atendimento.',
-  TREATMENT: 'Tratamento personalizado de acordo com o serviço selecionado.'
-};
-
 export default function PublicSEOComponent({
   services,
   plans,
@@ -223,16 +216,12 @@ export default function PublicSEOComponent({
 
   // Address and contact details derived from system parameters or official defaults
   const shopAddress = parameters?.address || "Presidente Arthur da Costa e Silva, 379";
-  const parameterPhone = parameters?.phone?.trim();
-  const shopPhone = parameterPhone && parameterPhone.replace(/\D/g, '').length >= 10
-    ? parameterPhone
-    : "+55 11 92598-0946";
+  const shopPhone = parameters?.phone || "+55 11 92598-0946";
   const shopName = parameters?.shopName || "Trima Studio";
 
   // Navigation URL routing sync
   useEffect(() => {
     const pathname = window.location.pathname;
-    const canonicalUrl = new URL(pathname, 'https://www.trimastudio.com.br').href;
     let title = "Trima Studio | Barbearia, Corte e Barba com Agendamento Online";
     let desc = "Trima Studio: barbearia especializada em corte masculino, barba, barboterapia, degradê, tratamentos e combos. Consulte os serviços e agende seu horário online.";
 
@@ -253,16 +242,6 @@ export default function PublicSEOComponent({
     const metaDescEl = document.querySelector('meta[name="description"]');
     if (metaDescEl) {
       metaDescEl.setAttribute('content', desc);
-    }
-
-    const canonicalEl = document.querySelector('link[rel="canonical"]');
-    if (canonicalEl) {
-      canonicalEl.setAttribute('href', canonicalUrl);
-    }
-
-    const ogUrlEl = document.querySelector('meta[property="og:url"]');
-    if (ogUrlEl) {
-      ogUrlEl.setAttribute('content', canonicalUrl);
     }
   }, []);
 
@@ -304,7 +283,7 @@ export default function PublicSEOComponent({
 
   return (
     <article className="w-full bg-[#050507] text-slate-100 font-sans leading-relaxed selection:bg-amber-500 selection:text-slate-950">
-
+      
       {/* 1. PUBLIC SEMANTIC NAVIGATION HEADER */}
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -366,7 +345,7 @@ export default function PublicSEOComponent({
         {/* 2. HERO PRESENTATION SECTION */}
         <section id="apresentacao" className="relative py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-left overflow-hidden border-b border-slate-800/60">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-
+            
             <div className="lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono font-bold uppercase tracking-widest">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -465,13 +444,13 @@ export default function PublicSEOComponent({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayServices.map((service, index) => {
+              const fallback = DEFAULT_SEO_SERVICES[index % DEFAULT_SEO_SERVICES.length];
               const name = service.name;
               const price = service.price ? `R$ ${Number(service.price).toFixed(2).replace('.', ',')}` : 'Consulte';
               const duration = service.durationMinutes ? `${service.durationMinutes} min` : '45 min';
-              const categoryFallback = DEFAULT_SEO_SERVICES.find(item => item.category === service.category) || DEFAULT_SEO_SERVICES[0];
-              const desc = service.description?.trim() || `Conheça o serviço ${name} do Trima Studio e consulte os horários disponíveis para agendamento online.`;
-              const benefits = (service as any).benefits || CATEGORY_BENEFITS[service.category] || 'Atendimento personalizado realizado pela equipe do Trima Studio.';
-              const imgUrl = (service as any).imageUrl || categoryFallback.imageUrl;
+              const desc = service.description || fallback.description;
+              const benefits = (service as any).benefits || fallback.benefits;
+              const imgUrl = (service as any).imageUrl || fallback.imageUrl;
 
               return (
                 <article
@@ -717,7 +696,7 @@ export default function PublicSEOComponent({
         {/* 7. LOCAL SEO & ADDRESS SECTION */}
         <section id="localizacao" className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-left border-b border-slate-800/60">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-
+            
             <div className="lg:col-span-6 space-y-6">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono font-bold uppercase tracking-widest">
                 <MapPin className="w-3.5 h-3.5" />
