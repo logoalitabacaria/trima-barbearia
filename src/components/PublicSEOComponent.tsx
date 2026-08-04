@@ -223,7 +223,10 @@ export default function PublicSEOComponent({
 
   // Address and contact details derived from system parameters or official defaults
   const shopAddress = parameters?.address || "Presidente Arthur da Costa e Silva, 379";
-  const shopPhone = parameters?.phone || "+55 11 92598-0946";
+  const parameterPhone = parameters?.phone?.trim();
+  const shopPhone = parameterPhone && parameterPhone.replace(/\D/g, '').length >= 10
+    ? parameterPhone
+    : "+55 11 92598-0946";
   const shopName = parameters?.shopName || "Trima Studio";
 
   // Navigation URL routing sync
