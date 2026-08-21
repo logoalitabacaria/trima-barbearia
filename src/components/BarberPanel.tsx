@@ -4,10 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { Calendar, Plus, Scissors, Trash2, UserPlus, ShoppingBag, CreditCard, Clock, Check, Send, AlertCircle, Zap, Search, FileText, Cake, Phone, MessageSquare, Copy, ExternalLink, Filter, UserCheck, AlertTriangle, CheckCircle2, Trophy, Target, Award, Crown, Star, Flame, Medal, Percent, TrendingUp, Sparkles } from 'lucide-react';
-import { User, Service, Product, Appointment, Comanda, ComandaItem, ComandaStatus, CustomerSubscription, SystemParameters, BarberDetail } from '../types';
+import { Calendar, Plus, Scissors, Trash2, UserPlus, ShoppingBag, CreditCard, Clock, Check, Send, AlertCircle, Zap, Search, FileText, Cake, Phone, MessageSquare, Copy, ExternalLink, Filter, UserCheck, AlertTriangle, CheckCircle2, Trophy, Target, Award, Crown, Star, Flame, Medal, Percent, TrendingUp, Sparkles, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, Service, Product, Appointment, Comanda, ComandaItem, ComandaStatus, CustomerSubscription, SystemParameters, BarberDetail, OperationalScript } from '../types';
 import { buildWhatsAppReminderUrl } from '../utils/helpers';
 import { calculateBarberGoalProgress, getBarberLeaderboard, DEFAULT_GOAL_TIERS } from '../utils/goals';
+import { playComandaDispatchedSound, playAppointmentScheduledSound } from '../utils/soundEffects';
 
 interface BarberPanelProps {
   users: User[];
@@ -18,6 +19,7 @@ interface BarberPanelProps {
   subscriptions?: CustomerSubscription[];
   barberDetails?: BarberDetail[];
   parameters?: SystemParameters;
+  scripts?: OperationalScript[];
   currentBarber: User;
   onUpdateState: (key: string, val: any) => void;
 }
@@ -31,10 +33,17 @@ export default function BarberPanel({
   subscriptions = [],
   barberDetails = [],
   parameters,
+  scripts = [],
   currentBarber,
   onUpdateState
 }: BarberPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'comandas' | 'agenda' | 'fichas' | 'comissoes' | 'leads' | 'metas'>('comandas');
+  const [activeSubTab, setActiveSubTab] = useState<'comandas' | 'agenda' | 'fichas' | 'comissoes' | 'leads' | 'metas' | 'scripts'>('comandas');
+
+  // Operational Scripts state for Barbers
+  const [bScriptCategoryFilter, setBScriptCategoryFilter] = useState('TODOS');
+  const [bScriptSearchTerm, setBScriptSearchTerm] = useState('');
+  const [bExpandedScriptIds, setBExpandedScriptIds] = useState<Record<string, boolean>>({});
+  const [bCopiedScriptId, setBCopiedScriptId] = useState<string | null>(null);
 
   // Leads filter state
   const [leadFilter, setLeadFilter] = useState<'ANIVERSARIANTE' | 'INATIVO_15' | 'INATIVO_30' | 'INATIVO_60' | 'TODOS'>('TODOS');
@@ -53,6 +62,7 @@ export default function BarberPanel({
   const [showClientModal, setShowClientModal] = useState(false);
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
   const [clientBirthday, setClientBirthday] = useState('');
 
   // Client search term for all select dropdowns
@@ -222,20 +232,28 @@ export default function BarberPanel({
   // REGISTER CLIENTS DIRECTLY BY THE BARBER
   const handleCreateClient = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName || !clientPhone) return;
+    if (!clientName.trim() || !clientPhone.trim()) return;
 
+    const defaultPwd = parameters?.defaultClientPassword || 'cliente123';
     const shortId = `cli-${Date.now()}`;
+    const cleanPhone = clientPhone.replace(/\D/g, '');
+    const userEmail = clientEmail.trim() || `${cleanPhone || shortId}@logoalibarber.com`;
+    const userLogin = clientEmail.trim() || cleanPhone || shortId;
+
     const newClient: User = {
       id: shortId,
-      name: clientName,
-      email: `${shortId}@logoalibarber.com`,
+      name: clientName.trim(),
+      email: userEmail,
       role: 'CUSTOMER',
-      phone: clientPhone,
+      phone: clientPhone.trim(),
       birthday: clientBirthday || undefined,
       isActive: true,
       avatar: '🧔',
-      login: clientPhone.replace(/\D/g, '').slice(-6) || 'cliente',
-      password: '123',
+      login: userLogin,
+      password: defaultPwd,
+      requiresPasswordChange: true, // Forces password change on first client login
+      createdBy: currentBarber.name,
+      createdAt: new Date().toISOString(),
       permissions: ['CUSTOMER_PORTAL']
     };
 
@@ -247,9 +265,10 @@ export default function BarberPanel({
 
     setClientName('');
     setClientPhone('');
+    setClientEmail('');
     setClientBirthday('');
     setShowClientModal(false);
-    alert('Cliente cadastrado com sucesso!');
+    alert(`Cliente ${newClient.name} cadastrado com sucesso!\n\n🔑 Login: ${userLogin}\n🔒 Senha padrão: ${defaultPwd}\n(O cliente definirá sua senha própria no primeiro acesso)`);
   };
 
   // SCHEDULE NEW SERVICES DIRECTLY BY THE BARBER
@@ -275,7 +294,8 @@ export default function BarberPanel({
       servicePrice: srv.price,
       date: bookingDate,
       time: bookingTime,
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      createdBy: currentBarber.name
     };
 
     onUpdateState('appointments', [...appointments, newAppointment]);
@@ -323,7 +343,8 @@ export default function BarberPanel({
       endTime: encaixeEndTime,
       status: 'IN_PROGRESS',
       isEncaixe: true,
-      notes: encaixeObs
+      notes: encaixeObs,
+      createdBy: currentBarber.name
     };
 
     // Also immediately create a comanda with selected service items
@@ -347,7 +368,8 @@ export default function BarberPanel({
       status: 'OPEN',
       createdAt: new Date().toISOString(),
       isEncaixe: true,
-      notes: encaixeObs
+      notes: encaixeObs,
+      createdBy: currentBarber.name
     };
 
     onUpdateState('appointments', [...appointments, newEncaixeApt]);
@@ -375,7 +397,8 @@ export default function BarberPanel({
       discount: 0,
       total: 0,
       status: 'OPEN',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      createdBy: currentBarber.name
     };
 
     onUpdateState('comandas', [...comandas, newComanda]);
@@ -413,6 +436,7 @@ export default function BarberPanel({
       total: apt.servicePrice,
       status: 'OPEN',
       createdAt: new Date().toISOString(),
+      createdBy: currentBarber.name,
       isSubscriptionUse: apt.isSubscriptionUse,
       subscriptionId: apt.subscriptionId,
       paymentMethod: apt.isSubscriptionUse ? 'ASSINATURA' : undefined
@@ -588,6 +612,10 @@ export default function BarberPanel({
       });
       onUpdateState('appointments', updatedApts);
     }
+
+    try {
+      playComandaDispatchedSound();
+    } catch {}
 
     alert(`Comanda de ${matched.customerName} despachada com sucesso ao Caixa! O atendimento foi marcado como ENCERRADO.`);
     setSelectedComandaId(null);
@@ -795,6 +823,14 @@ export default function BarberPanel({
             🏆 Minhas Metas & Gamificação
           </button>
         )}
+        <button
+          onClick={() => setActiveSubTab('scripts')}
+          className={`px-4 py-2 rounded-lg text-xs font-mono uppercase transition duration-150 cursor-pointer ${
+            activeSubTab === 'scripts' ? 'bg-yellow-500 text-black font-bold' : 'hover:bg-[#121215] text-zinc-400'
+          }`}
+        >
+          📜 Scripts & Padrões ({scripts.filter(s => s.isActive !== false).length})
+        </button>
       </div>
 
       {/* MODAL: REGISTRAR ENCAIXE */}
@@ -943,52 +979,87 @@ export default function BarberPanel({
       {/* MODAL: REGISTER NEW CLIENT */}
       {showClientModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121215] border-2 border-yellow-500 rounded-2xl p-6 w-full max-w-sm text-left">
-            <h3 className="text-sm font-mono font-bold uppercase text-yellow-500 mb-3 block">Novo Cadastro de Cliente</h3>
-            <form onSubmit={handleCreateClient} className="space-y-4">
+          <div className="bg-[#121215] border-2 border-yellow-500 rounded-2xl p-6 w-full max-w-md text-left space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-zinc-850 pb-3">
+              <h3 className="text-sm font-mono font-bold uppercase text-yellow-500 flex items-center gap-2">
+                <UserPlus className="w-4 h-4" /> Novo Cadastro de Cliente
+              </h3>
+              <button type="button" onClick={() => setShowClientModal(false)} className="text-zinc-500 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateClient} className="space-y-3.5">
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Nome do Cliente *</label>
+                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Nome Completo do Cliente *</label>
                 <input
                   type="text"
                   required
+                  placeholder="Ex: Carlos Eduardo"
                   value={clientName}
                   onChange={e => setClientName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-white"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-white"
                 />
               </div>
-              <div>
-                <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">WhatsApp / Telefone *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="(11) 99999-9999"
-                  value={clientPhone}
-                  onChange={e => setClientPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-white font-mono"
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">WhatsApp / Telefone *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="(11) 99999-9999"
+                    value={clientPhone}
+                    onChange={e => setClientPhone(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">E-mail (Login de Acesso)</label>
+                  <input
+                    type="email"
+                    placeholder="cliente@email.com"
+                    value={clientEmail}
+                    onChange={e => setClientEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-white font-mono"
+                  />
+                </div>
               </div>
+
+              {/* Informação sobre Senha Padrão */}
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 space-y-1 font-mono text-[11px]">
+                <div className="flex items-center justify-between text-yellow-400 font-bold">
+                  <span>🔑 Senha Padrão Inicial:</span>
+                  <span className="bg-zinc-950 px-2 py-0.5 rounded border border-yellow-500/40 text-xs text-white font-mono">
+                    {parameters?.defaultClientPassword || 'cliente123'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-tight">
+                  Quando o cliente acessar o portal pela primeira vez com o e-mail/telefone e esta senha padrão, o sistema solicitará automaticamente a criação de sua senha pessoal.
+                </p>
+              </div>
+
               <div>
                 <label className="text-[10px] text-zinc-400 font-mono block uppercase mb-1">Data de Aniversário (Opcional)</label>
                 <input
                   type="date"
                   value={clientBirthday}
                   onChange={e => setClientBirthday(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-white font-mono"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-white font-mono"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-850">
                 <button
                   type="button"
                   onClick={() => setShowClientModal(false)}
-                  className="px-3 py-2 bg-zinc-900 text-zinc-400 hover:text-white rounded-lg text-xs font-bold"
+                  className="px-3.5 py-2.5 bg-zinc-900 text-zinc-400 hover:text-white rounded-lg text-xs font-bold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-yellow-500 text-black hover:bg-yellow-600 rounded-lg text-xs font-bold uppercase"
+                  className="px-5 py-2.5 bg-yellow-500 text-black hover:bg-yellow-600 rounded-lg text-xs font-bold uppercase font-mono shadow-md cursor-pointer"
                 >
-                  Salvar Cadastro
+                  Cadastrar Cliente
                 </button>
               </div>
             </form>
@@ -2471,6 +2542,252 @@ export default function BarberPanel({
                 <p className="text-zinc-400 whitespace-pre-line leading-relaxed">
                   {parameters.barberGoalsRulesText}
                 </p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* SUBTAB: OPERATIONAL SCRIPTS & PROCEDURES FOR BARBERS */}
+      {activeSubTab === 'scripts' && (() => {
+        const rawScripts = (scripts || []).filter(s => s.isActive !== false);
+
+        const CATEGORY_DEFINITIONS: Record<string, { label: string; icon: string; badgeColor: string }> = {
+          'ATENDIMENTO': { label: 'Atendimento & Recepção', icon: '💬', badgeColor: 'text-sky-400 bg-sky-500/10 border-sky-500/30' },
+          'CORTE_BARBA': { label: 'Técnicas de Corte & Barba', icon: '💈', badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+          'TÉCNICAS & PROCEDIMENTOS': { label: 'Técnicas & Procedimentos', icon: '💈', badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+          'HIGIENE_BIOSSEGURANCA': { label: 'Higiene & Biossegurança', icon: '🧼', badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+          'HIGIENE & BIOSSEGURANÇA': { label: 'Higiene & Biossegurança', icon: '🧼', badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+          'HIGIENE': { label: 'Higiene & Biossegurança', icon: '🧼', badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+          'VENDAS_PRODUTOS': { label: 'Vendas & Produtos', icon: '🛍️', badgeColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30' },
+          'VENDAS & PRODUTOS': { label: 'Vendas & Produtos', icon: '🛍️', badgeColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30' },
+          'VENDAS': { label: 'Vendas & Produtos', icon: '🛍️', badgeColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30' },
+          'FIDELIZACAO': { label: 'Fidelização & Pós-Venda', icon: '⭐', badgeColor: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30' },
+          'FIDELIZAÇÃO & PÓS-VENDA': { label: 'Fidelização & Pós-Venda', icon: '⭐', badgeColor: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30' },
+          'GESTAO_COMANDAS': { label: 'Gestão de Comandas', icon: '💼', badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' },
+          'GERAL': { label: 'Padrões Gerais', icon: '📜', badgeColor: 'text-zinc-300 bg-zinc-800 border-zinc-700' },
+          'OUTROS': { label: 'Outros Padrões', icon: '📜', badgeColor: 'text-zinc-300 bg-zinc-800 border-zinc-700' }
+        };
+
+        const getCategoryMeta = (cat: string) => {
+          const upper = (cat || 'GERAL').toUpperCase();
+          if (CATEGORY_DEFINITIONS[upper]) return CATEGORY_DEFINITIONS[upper];
+          return {
+            label: cat,
+            icon: '📁',
+            badgeColor: 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+          };
+        };
+
+        const allCategories = Array.from(new Set(rawScripts.map(s => s.category.toUpperCase())));
+
+        const filtered = rawScripts.filter(s => {
+          const matchCat = bScriptCategoryFilter === 'TODOS' || s.category.toUpperCase() === bScriptCategoryFilter.toUpperCase();
+          const term = bScriptSearchTerm.trim().toLowerCase();
+          const matchSearch = !term ||
+            s.title.toLowerCase().includes(term) ||
+            s.category.toLowerCase().includes(term) ||
+            (s.content && s.content.toLowerCase().includes(term)) ||
+            (s.steps && s.steps.some(st => st.toLowerCase().includes(term))) ||
+            (s.tips && s.tips.toLowerCase().includes(term)) ||
+            (s.tags && s.tags.some(t => t.toLowerCase().includes(term)));
+          return matchCat && matchSearch;
+        });
+
+        const handleCopy = (s: OperationalScript) => {
+          const text = `📜 ${s.title}\n📂 Categoria: ${s.category}\n\n📝 PASSOS:\n${(s.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n')}\n${s.tips ? `\n💡 DICA: ${s.tips}` : ''}`;
+          navigator.clipboard.writeText(text).then(() => {
+            setBCopiedScriptId(s.id);
+            setTimeout(() => setBCopiedScriptId(null), 2500);
+          }).catch(() => {
+            alert(text);
+          });
+        };
+
+        return (
+          <div className="space-y-6 text-left animate-fadeIn">
+            {/* Header */}
+            <div className="bg-[#121215] border border-zinc-800 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-yellow-400" /> Manual de Scripts & Procedimentos da Barbearia
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
+                  Consulte os padrões de excelência em atendimento, técnicas de corte, higiene e biossegurança, argumentos de vendas de produtos e pós-venda.
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-zinc-500 font-mono uppercase block">Scripts Disponíveis</span>
+                <span className="text-lg font-bold font-mono text-white">{rawScripts.length} Padrões</span>
+              </div>
+            </div>
+
+            {/* Filter and Category Pills */}
+            <div className="bg-[#121215] border border-zinc-800 p-4 rounded-2xl space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBScriptCategoryFilter('TODOS')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer border ${
+                    bScriptCategoryFilter === 'TODOS'
+                      ? 'bg-yellow-500 text-black border-yellow-400'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-white'
+                  }`}
+                >
+                  <span>📑 Todas ({rawScripts.length})</span>
+                </button>
+
+                {allCategories.map(cat => {
+                  const meta = getCategoryMeta(cat);
+                  const count = rawScripts.filter(s => s.category.toUpperCase() === cat).length;
+                  const isSelected = bScriptCategoryFilter.toUpperCase() === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setBScriptCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer border ${
+                        isSelected
+                          ? 'bg-yellow-500 text-black border-yellow-400'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-white'
+                      }`}
+                    >
+                      <span>{meta.icon}</span>
+                      <span>{meta.label}</span>
+                      <span className="text-[10px] bg-black/20 px-1.5 py-0.2 rounded-full">({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search input */}
+              <div className="pt-2 border-t border-zinc-850">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={bScriptSearchTerm}
+                    onChange={(e) => setBScriptSearchTerm(e.target.value)}
+                    placeholder="Buscar script por palavra-chave, técnica, produto..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-3 pr-8 py-2 text-xs text-white focus:border-yellow-500 outline-none font-mono placeholder:text-zinc-600"
+                  />
+                  {bScriptSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setBScriptSearchTerm('')}
+                      className="absolute right-2.5 top-2 text-zinc-400 hover:text-white text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Script Cards Grid */}
+            {filtered.length === 0 ? (
+              <div className="bg-[#121215] border border-zinc-800 rounded-2xl p-8 text-center text-zinc-500 font-mono text-xs">
+                Nenhum script encontrado para esta categoria ou busca.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filtered.map(script => {
+                  const meta = getCategoryMeta(script.category);
+                  const isCopied = bCopiedScriptId === script.id;
+                  const isExpanded = !!bExpandedScriptIds[script.id];
+                  const stepsList = script.steps && script.steps.length > 0
+                    ? script.steps
+                    : (script.content ? script.content.split('\n').filter(Boolean) : []);
+                  const hasManySteps = stepsList.length > 3;
+                  const visibleSteps = isExpanded || !hasManySteps ? stepsList : stepsList.slice(0, 3);
+
+                  return (
+                    <div
+                      key={script.id}
+                      className="bg-[#121215] border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between hover:border-zinc-700 transition"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-md border flex items-center gap-1 ${meta.badgeColor}`}>
+                            <span>{meta.icon}</span>
+                            <span>{script.category}</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(script)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer ${
+                              isCopied
+                                ? 'bg-emerald-500 text-black'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+                            }`}
+                          >
+                            {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
+                          </button>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-white font-mono leading-snug">
+                          {script.title}
+                        </h4>
+
+                        {/* Steps */}
+                        <div className="bg-zinc-950/80 border border-zinc-855/80 rounded-xl p-3.5 space-y-2">
+                          {visibleSteps.map((st, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-xs text-zinc-300 font-mono leading-relaxed">
+                              <span className="w-4 h-4 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                {idx + 1}
+                              </span>
+                              <span className="flex-1">{st}</span>
+                            </div>
+                          ))}
+
+                          {hasManySteps && (
+                            <div className="pt-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setBExpandedScriptIds(prev => ({ ...prev, [script.id]: !prev[script.id] }))}
+                                className="text-[10px] text-yellow-400 hover:text-yellow-300 font-mono font-bold uppercase flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-3 h-3" /> Recolher
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3 h-3" /> Ver mais {stepsList.length - 3} passos...
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Golden Tip */}
+                        {script.tips && (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2 text-xs text-amber-200 font-mono">
+                            <span className="text-base shrink-0 mt-0.5">💡</span>
+                            <div className="space-y-0.5">
+                              <span className="text-[9px] text-amber-400 font-bold uppercase tracking-wider block">
+                                Dica de Ouro:
+                              </span>
+                              <p className="leading-relaxed text-[11px]">{script.tips}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {script.tags && script.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-3 mt-2 border-t border-zinc-850">
+                          {script.tags.map((t, idx) => (
+                            <span key={idx} className="text-[9px] font-mono text-zinc-400 bg-zinc-950 border border-zinc-850 px-1.5 py-0.5 rounded">
+                              #{t.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

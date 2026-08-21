@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Scissors, Calendar, Settings, Coins, LogOut, Wallet, UserCheck, Shield, HelpCircle, ArrowRight
+  Scissors, Calendar, Settings, Coins, LogOut, Wallet, UserCheck, Shield, HelpCircle, ArrowRight, Key
 } from 'lucide-react';
 import { getSavedState, saveState } from './data';
 import { User, UserRole, Service, Product, LoyaltyPlan, CustomerSubscription, Appointment, Comanda, SystemParameters } from './types';
@@ -16,6 +16,7 @@ import BarberPanel from './components/BarberPanel';
 import CustomerPanel from './components/CustomerPanel';
 import CashierPanel from './components/CashierPanel';
 import ManualModal from './components/ManualModal';
+import { PasswordChangeModal } from './components/PasswordChangeModal';
 
 export default function App() {
   // Global State (persisted inside localStorage)
@@ -48,6 +49,7 @@ export default function App() {
   // Navigation tab route state
   const [activeTab, setActiveTab] = useState<string>('');
   const [isManualOpen, setIsManualOpen] = useState(false);
+  const [showManualPasswordModal, setShowManualPasswordModal] = useState(false);
 
   // Guest dummy user profile for unauthenticated visitors
   const guestUser: User = {
@@ -224,6 +226,20 @@ export default function App() {
     setCurrentUser(null);
   };
 
+  const handleSavePassword = (newPassword: string) => {
+    if (!currentUser) return;
+    const updatedUser: User = {
+      ...currentUser,
+      password: newPassword,
+      requiresPasswordChange: false,
+      lastPasswordChangeAt: new Date().toISOString()
+    };
+    const updatedUsers = state.users.map(u => u.id === currentUser.id ? updatedUser : u);
+    handleUpdateState('users', updatedUsers);
+    setCurrentUser(updatedUser);
+    setShowManualPasswordModal(false);
+  };
+
   // Client Registration with referral code & instant auto-login!
   const handleRegisterClient = (name: string, phone: string, login_user: string, secret_pass: string, referredByCode?: string) => {
     const newId = `cli-${Date.now()}`;
@@ -377,6 +393,15 @@ export default function App() {
                   {currentUser.avatar || '👤'}
                 </span>
                 <button
+                  type="button"
+                  onClick={() => setShowManualPasswordModal(true)}
+                  className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-yellow-400 border border-zinc-800 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
+                  title="Alterar Minha Senha"
+                >
+                  <Key className="w-4 h-4 text-yellow-500" />
+                  <span className="hidden md:inline">Alterar Senha</span>
+                </button>
+                <button
                   onClick={() => setIsManualOpen(true)}
                   className="px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
                   title="Abrir Manual do Sistema"
@@ -474,6 +499,7 @@ export default function App() {
                 plans={state.plans}
                 appointments={state.appointments}
                 subscriptions={state.subscriptions}
+                comandas={state.comandas}
                 parameters={state.parameters}
                 npsFeedbacks={state.npsFeedbacks || []}
                 onUpdateState={handleUpdateState}
@@ -505,6 +531,9 @@ export default function App() {
                       categories={state.categories || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']}
                       supplyTransactions={state.supplyTransactions || []}
                       npsFeedbacks={state.npsFeedbacks || []}
+                      scripts={state.scripts || []}
+                      coupons={state.coupons || []}
+                      creditTransactions={state.creditTransactions || []}
                       onUpdateState={handleUpdateState}
                       onResetDatabase={async () => {
                         setIsLoadingDb(true);
@@ -531,6 +560,7 @@ export default function App() {
                       subscriptions={state.subscriptions || []}
                       barberDetails={state.barberDetails || []}
                       parameters={state.parameters}
+                      scripts={state.scripts || []}
                       onUpdateState={handleUpdateState}
                     />
                   )}
@@ -544,6 +574,8 @@ export default function App() {
                       subscriptions={state.subscriptions}
                       appointments={state.appointments}
                       parameters={state.parameters}
+                      coupons={state.coupons || []}
+                      creditTransactions={state.creditTransactions || []}
                       onUpdateState={handleUpdateState}
                     />
                   )}
@@ -556,8 +588,11 @@ export default function App() {
                       plans={state.plans}
                       appointments={state.appointments}
                       subscriptions={state.subscriptions}
+                      comandas={state.comandas}
                       parameters={state.parameters}
                       npsFeedbacks={state.npsFeedbacks || []}
+                      coupons={state.coupons || []}
+                      creditTransactions={state.creditTransactions || []}
                       onUpdateState={handleUpdateState}
                     />
                   )}
@@ -571,6 +606,16 @@ export default function App() {
             onClose={() => setIsManualOpen(false)}
             defaultRole={currentUser?.role || 'ADMIN'}
           />
+
+          {currentUser && (
+            <PasswordChangeModal
+              currentUser={currentUser}
+              isOpen={Boolean(currentUser.requiresPasswordChange || showManualPasswordModal)}
+              isMandatory={Boolean(currentUser.requiresPasswordChange)}
+              onSavePassword={handleSavePassword}
+              onClose={() => setShowManualPasswordModal(false)}
+            />
+          )}
 
         </div>
       )}

@@ -1,5 +1,5 @@
 {
-  "name": "Trima Studio",
+  "name": "trima Studio",
   "description": "Sistema de gestão integrado para o Trima Studio com fluxo de comanda digital, controle de acesso e fidelidade.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

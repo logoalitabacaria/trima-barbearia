@@ -83,6 +83,26 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Operational Scripts & Standards collection
+    match /scripts/{scriptId} {
+      allow read, write: if true;
+    }
+
+    // Discount Coupons collection
+    match /coupons/{couponId} {
+      allow read, write: if true;
+    }
+
+    // Customer Credit Transactions collection
+    match /creditTransactions/{creditId} {
+      allow read, write: if true;
+    }
+
+    // Barber Commission Payouts collection
+    match /barberPayouts/{payoutId} {
+      allow read, write: if true;
+    }
+
     // Connection test collection
     match /test/{docId} {
       allow read, write: if true;

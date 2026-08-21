@@ -60,10 +60,23 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
   // Register state
   const [regName, setRegName] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regLogin, setRegLogin] = useState(''); // Stores CPF
+  const [regEmail, setRegEmail] = useState(''); // Email for login
+  const [regCpf, setRegCpf] = useState(''); // Optional CPF
   const [regPassword, setRegPassword] = useState('');
   const [regReferralCode, setRegReferralCode] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
+
+  // Check URL query parameters for referral link (e.g. ?ref=TRIMA-XXXX or ?indicacao=CODE)
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const refParam = params.get('ref') || params.get('indicacao') || params.get('indica');
+      if (refParam) {
+        setRegReferralCode(refParam.trim().toUpperCase());
+        setIsRegisterMode(true);
+      }
+    }
+  }, []);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,9 +90,13 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
     const cleanInput = login.trim();
     const cleanDigits = cleanInput.replace(/[^\d]+/g, '');
 
-    // 1. Match exact (for admin/barbers by login or email)
+    // 1. Match exact by email, login, or phone
     let foundUser = users.find(
-      u => (u.login?.toLowerCase() === cleanInput.toLowerCase() || u.email?.toLowerCase() === cleanInput.toLowerCase()) && u.password === password
+      u => (
+        u.login?.toLowerCase() === cleanInput.toLowerCase() ||
+        u.email?.toLowerCase() === cleanInput.toLowerCase() ||
+        (u.phone && u.phone.replace(/[^\d]+/g, '') === cleanDigits)
+      ) && u.password === password
     );
 
     // 2. If not found, match by clean CPF digits (for customers)
@@ -91,7 +108,7 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
     }
 
     if (!foundUser) {
-      setError('CPF, Usuário ou senha incorretos.');
+      setError('E-mail, CPF, Usuário ou senha incorretos.');
       return;
     }
 
@@ -108,41 +125,64 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
     setError('');
     setRegSuccess('');
 
-    if (!regName || !regPhone || !regLogin || !regPassword) {
-      setError('Preencha os campos obrigatórios para o cadastro.');
+    if (!regName.trim() || !regPhone.trim() || !regPassword.trim()) {
+      setError('Preencha nome, telefone/WhatsApp e senha para realizar o cadastro.');
       return;
     }
 
-    const cleanCPF = regLogin.replace(/[^\d]+/g, '');
-    if (!validateCPF(cleanCPF)) {
-      setError('CPF inválido! O CPF fornecido não é válido segundo o algoritmo oficial.');
+    if (regPassword.length < 4) {
+      setError('A senha criada precisa conter pelo menos 4 dígitos/caracteres.');
       return;
     }
 
-    if (regPassword.length < 6) {
-      setError('A senha criada precisa conter pelo menos 6 dígitos/caracteres.');
+    const cleanCPF = regCpf.replace(/[^\d]+/g, '');
+    if (cleanCPF.length > 0) {
+      if (!validateCPF(cleanCPF)) {
+        setError('O CPF digitado é inválido. Deixe em branco caso não queira cadastrar.');
+        return;
+      }
+      // Check collision on clean digits
+      const collision = users.find(u => {
+        const uClean = u.login?.replace(/[^\d]+/g, '') || '';
+        return uClean === cleanCPF;
+      });
+      if (collision) {
+        setError('Este CPF já está registrado no sistema.');
+        return;
+      }
+    }
+
+    // Determine login identifier: email if provided, else CPF if provided, else clean phone
+    const cleanPhone = regPhone.replace(/[^\d]+/g, '');
+    const userLogin = regEmail.trim()
+      ? regEmail.trim().toLowerCase()
+      : (cleanCPF ? formatCPF(cleanCPF) : cleanPhone || regName.toLowerCase().replace(/\s+/g, ''));
+
+    // Check collision on email or phone
+    const emailOrPhoneCollision = users.find(u => 
+      (regEmail && u.email?.toLowerCase() === regEmail.trim().toLowerCase()) ||
+      (cleanPhone && u.phone?.replace(/[^\d]+/g, '') === cleanPhone)
+    );
+
+    if (emailOrPhoneCollision) {
+      setError('Já existe um cadastro com este e-mail ou telefone. Tente fazer login.');
       return;
     }
 
-    // Check collision on clean digits
-    const collision = users.find(u => {
-      const uClean = u.login?.replace(/[^\d]+/g, '') || '';
-      return uClean === cleanCPF;
-    });
-
-    if (collision) {
-      setError('Este CPF já está registrado no sistema.');
-      return;
-    }
-
-    // Register with formatted CPF and referral code
-    onRegisterClient(regName, regPhone, formatCPF(cleanCPF), regPassword, regReferralCode.trim().toUpperCase());
+    // Register with determined login/email and referral code
+    onRegisterClient(
+      regName.trim(),
+      regPhone.trim(),
+      userLogin,
+      regPassword.trim(),
+      regReferralCode.trim().toUpperCase()
+    );
     setRegSuccess('Sua conta foi criada com sucesso! Carregando estúdio...');
   };
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCPF(e.target.value);
-    setRegLogin(formatted);
+    setRegCpf(formatted);
   };
 
   return (
@@ -268,45 +308,58 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                 />
               </div>
 
-              <div>
-                <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
-                  WhatsApp / Celular com DDD *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={regPhone}
-                  onChange={(e) => setRegPhone(e.target.value)}
-                  placeholder="Ex: (11) 98765-4321"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
-                    CPF (Documento) *
+                    WhatsApp / Celular *
                   </label>
                   <input
                     type="text"
                     required
-                    value={regLogin}
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    placeholder="Ex: (11) 98765-4321"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
+                    E-mail (para login)
+                  </label>
+                  <input
+                    type="email"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="seu.email@exemplo.com"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
+                    CPF <span className="text-zinc-500 font-normal lowercase">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={regCpf}
                     onChange={handleCpfChange}
-                    placeholder="000.000.000-00"
+                    placeholder="000.000.000-00 (opcional)"
                     maxLength={14}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>
                 <div>
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
-                    Senha (mínimo 6 dígitos) *
+                    Senha de Acesso *
                   </label>
                   <input
                     type="password"
                     required
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="Ex: 123456"
+                    placeholder="Sua senha secreta"
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>

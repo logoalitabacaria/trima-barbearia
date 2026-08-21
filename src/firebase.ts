@@ -22,6 +22,9 @@ import {
   INITIAL_SUBSCRIPTIONS,
   INITIAL_APPOINTMENTS,
   INITIAL_COMANDAS,
+  INITIAL_SCRIPTS,
+  INITIAL_COUPONS,
+  INITIAL_CREDIT_TRANSACTIONS,
   getSavedState
 } from './data';
 
@@ -182,6 +185,34 @@ export async function loadStateFromFirestore() {
     });
     let npsFeedbacksList = npsSnap.docs.map(d => d.data());
 
+    // 13. Fetch Scripts
+    const scriptsSnap = await getDocs(collection(db, 'scripts')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'scripts');
+      return { docs: [] };
+    });
+    let scriptsList = scriptsSnap.docs.map(d => d.data());
+
+    // 14. Fetch Coupons
+    const couponsSnap = await getDocs(collection(db, 'coupons')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'coupons');
+      return { docs: [] };
+    });
+    let couponsList = couponsSnap.docs.map(d => d.data());
+
+    // 15. Fetch Credit Transactions
+    const creditTxSnap = await getDocs(collection(db, 'creditTransactions')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'creditTransactions');
+      return { docs: [] };
+    });
+    let creditTxList = creditTxSnap.docs.map(d => d.data());
+
+    // 16. Fetch Barber Payouts
+    const barberPayoutsSnap = await getDocs(collection(db, 'barberPayouts')).catch(err => {
+      handleFirestoreError(err, OperationType.LIST, 'barberPayouts');
+      return { docs: [] };
+    });
+    let barberPayoutsList = barberPayoutsSnap.docs.map(d => d.data());
+
     // Merge with localStorage if Firestore was empty for certain collections
     const finalUsers = usersList.length > 0 ? usersList : (savedLocal.users || []);
     const finalBarberDetails = barberDetailsList.length > 0 ? barberDetailsList : (savedLocal.barberDetails || []);
@@ -193,6 +224,10 @@ export async function loadStateFromFirestore() {
     const finalComandas = comandasList.length > 0 ? comandasList : (savedLocal.comandas || []);
     const finalSupplyTransactions = supplyTransactionsList.length > 0 ? supplyTransactionsList : (savedLocal.supplyTransactions || []);
     const finalNpsFeedbacks = npsFeedbacksList.length > 0 ? npsFeedbacksList : (savedLocal.npsFeedbacks || []);
+    const finalScripts = scriptsList.length > 0 ? scriptsList : (savedLocal.scripts || INITIAL_SCRIPTS);
+    const finalCoupons = couponsList.length > 0 ? couponsList : (savedLocal.coupons || INITIAL_COUPONS);
+    const finalCreditTransactions = creditTxList.length > 0 ? creditTxList : (savedLocal.creditTransactions || INITIAL_CREDIT_TRANSACTIONS);
+    const finalBarberPayouts = barberPayoutsList.length > 0 ? barberPayoutsList : (savedLocal.barberPayouts || []);
 
     // FORCE ENSURE MAIN ADMIN IS ALWAYS PRESENT
     const adminObj = {
@@ -203,12 +238,19 @@ export async function loadStateFromFirestore() {
       phone: '(11) 99999-9999',
       isActive: true,
       avatar: '👑',
-      login: 'wagnerbmoreno@gmail.com',
-      password: 'Wag01121201!',
+      login: 'wagner',
+      password: '123',
       permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
     };
-    const hasAdmin = finalUsers.some((u: any) => u.id === 'usr-admin' || u.login === 'wagnerbmoreno@gmail.com');
-    if (!hasAdmin) {
+    const adminIdx = finalUsers.findIndex((u: any) => u.id === 'usr-admin' || u.login === 'wagner' || u.login === 'wagnerbmoreno@gmail.com' || u.email === 'wagnerbmoreno@gmail.com');
+    if (adminIdx >= 0) {
+      finalUsers[adminIdx] = {
+        ...finalUsers[adminIdx],
+        name: 'Wagner Barrera Moreno',
+        login: 'wagner',
+        password: '123'
+      };
+    } else {
       finalUsers.unshift(adminObj);
     }
     await saveDocumentToFirestore('users', 'usr-admin', adminObj);
@@ -234,6 +276,16 @@ export async function loadStateFromFirestore() {
         if (b.userId) await saveDocumentToFirestore('barberDetails', b.userId, b);
       }
     }
+    if (scriptsList.length === 0 && finalScripts.length > 0) {
+      for (const sc of finalScripts) {
+        if (sc.id) await saveDocumentToFirestore('scripts', sc.id, sc);
+      }
+    }
+    if (couponsList.length === 0 && finalCoupons.length > 0) {
+      for (const cp of finalCoupons) {
+        if (cp.id) await saveDocumentToFirestore('coupons', cp.id, cp);
+      }
+    }
 
     return {
       users: finalUsers,
@@ -246,6 +298,10 @@ export async function loadStateFromFirestore() {
       comandas: finalComandas,
       supplyTransactions: finalSupplyTransactions,
       npsFeedbacks: finalNpsFeedbacks,
+      scripts: finalScripts,
+      coupons: finalCoupons,
+      creditTransactions: finalCreditTransactions,
+      barberPayouts: finalBarberPayouts,
       parameters: parametersData || savedLocal.parameters || INITIAL_SYSTEM_PARAMETERS,
       categories: categoriesList || savedLocal.categories || ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']
     };
@@ -338,8 +394,8 @@ export async function clearDatabaseToProduction() {
     phone: '(11) 99999-9999',
     isActive: true,
     avatar: '👑',
-    login: 'wagnerbmoreno@gmail.com',
-    password: 'Wag01121201!',
+    login: 'wagner',
+    password: '123',
     permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
   };
   await saveDocumentToFirestore('users', 'usr-admin', adminObj);
@@ -372,7 +428,11 @@ export function subscribeToFirestoreState(onStateChange: (updatedData: Partial<a
     { name: 'appointments', key: 'appointments' },
     { name: 'comandas', key: 'comandas' },
     { name: 'supplyTransactions', key: 'supplyTransactions' },
-    { name: 'npsFeedbacks', key: 'npsFeedbacks' }
+    { name: 'npsFeedbacks', key: 'npsFeedbacks' },
+    { name: 'scripts', key: 'scripts' },
+    { name: 'coupons', key: 'coupons' },
+    { name: 'creditTransactions', key: 'creditTransactions' },
+    { name: 'barberPayouts', key: 'barberPayouts' }
   ];
 
   collections.forEach(({ name, key }) => {

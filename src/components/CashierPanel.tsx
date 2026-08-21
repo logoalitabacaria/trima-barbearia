@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { DollarSign, Wallet, Check, AlertCircle, Trash2, Clock, Eye, Info, Percent, Printer, X, Copy } from 'lucide-react';
-import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription, Appointment } from '../types';
+import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription, Appointment, DiscountCoupon, CustomerCreditTransaction } from '../types';
+import { playComandaPaidSound, playSubscriptionActivatedSound } from '../utils/soundEffects';
 
 interface CashierPanelProps {
   currentUser?: User;
@@ -15,6 +16,8 @@ interface CashierPanelProps {
   subscriptions: CustomerSubscription[];
   appointments?: Appointment[];
   parameters: SystemParameters;
+  coupons?: DiscountCoupon[];
+  creditTransactions?: CustomerCreditTransaction[];
   onUpdateState: (key: string, val: any) => void;
 }
 
@@ -26,6 +29,8 @@ export default function CashierPanel({
   subscriptions,
   appointments = [],
   parameters,
+  coupons = [],
+  creditTransactions = [],
   onUpdateState
 }: CashierPanelProps) {
   const [filterMode, setFilterMode] = useState<'PENDING' | 'PAID'>('PENDING');
@@ -196,6 +201,28 @@ export default function CashierPanel({
       }
     }
 
+    // 5.1 If comanda was for purchasing a subscription (ADESÃO), activate it!
+    const isSubscriptionAdesao = selectedComanda.notes?.includes('[ASSINATURA_PENDENTE]') ||
+      selectedComanda.items.some(i => i.name.toLowerCase().includes('assinatura clube vip') || i.name.toLowerCase().includes('plano'));
+    
+    if (isSubscriptionAdesao && selectedComanda.customerId) {
+      const pendingSub = subscriptions.find(s => s.customerId === selectedComanda.customerId && (s.status === 'PENDING_PAYMENT' || !s.isActive));
+      if (pendingSub) {
+        onUpdateState('subscriptions', subscriptions.map(s => {
+          if (s.id === pendingSub.id) {
+            return {
+              ...s,
+              isActive: true,
+              status: 'ACTIVE',
+              paidAt: new Date().toISOString(),
+              paymentMethod: paymentMethod
+            };
+          }
+          return s;
+        }));
+      }
+    }
+
     // 6. PROGRAMA DE FIDELIDADE: Credit points and deduct if redeemed
     if (parameters.enableLoyalty !== false && selectedComanda.customerId) {
       const ptsPerReal = parameters.loyaltyPointsPerReal || 1;
@@ -221,6 +248,15 @@ export default function CashierPanel({
     setDiscountVal('0');
     setIsRedeemingLoyalty(false);
     setPaymentMethod('PIX');
+
+    try {
+      if (isSubscriptionAdesao) {
+        playSubscriptionActivatedSound();
+      } else {
+        playComandaPaidSound();
+      }
+    } catch {}
+
     alert('Comanda registrada como PAGA com sucesso! Comissão provisionada na ficha do barbeiro e Pontos de Fidelidade atualizados.');
   };
 
@@ -296,7 +332,14 @@ export default function CashierPanel({
                     </span>
                   </div>
 
-                  {c.readyForPayment && (
+                  {c.notes?.includes('[ASSINATURA_PENDENTE]') && (
+                    <div className="mt-2 bg-yellow-950/90 text-yellow-300 border border-yellow-700/80 px-2.5 py-1 rounded-lg text-[9px] font-mono font-bold uppercase flex items-center justify-between shadow-sm">
+                      <span>⭐ ADESÃO CLUBE VIP</span>
+                      <span className="text-[8px] text-yellow-400">Pendente Caixa</span>
+                    </div>
+                  )}
+
+                  {c.readyForPayment && !c.notes?.includes('[ASSINATURA_PENDENTE]') && (
                     <div className="mt-2 bg-emerald-950/90 text-emerald-400 border border-emerald-800/80 px-2.5 py-1 rounded-lg text-[9px] font-mono font-extrabold uppercase flex items-center justify-between shadow-sm animate-pulse">
                       <span className="flex items-center gap-1">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />

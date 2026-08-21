@@ -49,6 +49,59 @@ export interface User {
   loyaltyPoints?: number; // Loyalty points balance
   referralCode?: string; // User's unique referral code
   referredByCode?: string; // Code of the user who referred them
+  referralRewardGranted?: boolean; // True if referral bonus was already granted upon first purchase
+  creditBalance?: number; // Positive advance/prepaid balance in R$
+  debtBalance?: number; // Pending fiado/debt balance in R$
+  requiresPasswordChange?: boolean; // True if mandatory password change is required on next login
+  createdBy?: string; // Name or login of the user who registered this account
+  createdAt?: string; // ISO timestamp
+  lastPasswordChangeAt?: string; // ISO timestamp of last password update
+}
+
+export interface OperationalScript {
+  id: string;
+  title: string;
+  category: 'ATENDIMENTO' | 'HIGIENE' | 'POSTURA' | 'ORGANIZACAO' | 'VENDAS' | 'GERAL' | 'CORTE_BARBA' | 'HIGIENE_BIOSSEGURANCA' | 'VENDAS_PRODUTOS' | 'FIDELIZACAO' | 'GESTAO_COMANDAS' | 'OUTROS' | string;
+  content: string;
+  steps?: string[];
+  tips?: string;
+  targetAudience?: 'BARBERS' | 'CASHIERS' | 'ALL' | string;
+  isActive?: boolean;
+  tags?: string[];
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
+export interface DiscountCoupon {
+  id: string;
+  code: string; // e.g. "PRIMEIRA10", "TRIMA20"
+  description?: string;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountValue: number; // e.g. 10 (%) or 15 (R$)
+  minPurchaseAmount?: number; // optional minimum purchase value
+  maxUsesTotal?: number; // max times coupon can be used across all customers
+  maxUsesPerCustomer?: number; // max times 1 customer can use
+  timesUsed: number;
+  usedBy?: Array<{ customerId: string; customerName?: string; date: string; comandaId?: string }>;
+  validUntil?: string; // YYYY-MM-DD
+  isActive: boolean;
+  rulesText?: string;
+  createdAt: string;
+}
+
+export interface CustomerCreditTransaction {
+  id: string;
+  customerId: string;
+  customerName: string;
+  type: 'CREDIT_ADD' | 'CREDIT_USE' | 'DEBT_ADD' | 'DEBT_PAY'; // Adiantamento/Crédito adicionado, Usado na compra, Fiado gerado, Fiado quitado
+  amount: number;
+  balanceAfter: number;
+  description: string;
+  createdAt: string;
+  createdBy: string; // Nome do operador do Caixa
+  paymentMethod?: string;
+  comandaId?: string;
 }
 
 export interface BarberGoalTier {
@@ -122,12 +175,39 @@ export interface CustomerSubscription {
   endDate: string;
   servicesRemaining: number;
   isActive: boolean;
+  status?: 'PENDING_PAYMENT' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  comandaId?: string;
+  paidAt?: string;
+  paymentMethod?: string;
   selectedServiceIds?: string[];
   totalPriceMonthly?: number;
   discountPercentage?: number;
 }
 
+export interface BarberPayout {
+  id: string;
+  barberId: string;
+  barberName: string;
+  amount: number;
+  type: 'COMMISSION_SETTLEMENT' | 'ADVANCE_VALE' | 'BONUS_REWARD' | 'OTHER_ADJUSTMENT';
+  date: string; // YYYY-MM-DD
+  paymentMethod: string; // e.g. "PIX", "DINHEIRO", "TRANSFERÊNCIA"
+  notes?: string;
+  receiptNumber?: string;
+  registeredBy: string; // Admin user who registered the payment
+  createdAt: string;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
 export type AppointmentStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface AdditionalServiceItem {
+  serviceId: string;
+  serviceName: string;
+  price: number;
+  durationMinutes: number;
+}
 
 export interface Appointment {
   id: string;
@@ -139,6 +219,9 @@ export interface Appointment {
   serviceId: string;
   serviceName: string;
   servicePrice: number;
+  additionalServices?: AdditionalServiceItem[];
+  totalPrice?: number;
+  totalDurationMinutes?: number;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   endTime?: string; // HH:MM for encaixe or custom duration
@@ -150,6 +233,7 @@ export interface Appointment {
   isSubscriptionUse?: boolean;
   subscriptionId?: string;
   notes?: string;
+  createdBy?: string; // Logged-in user who scheduled/created this appointment
 }
 
 export type ComandaStatus = 'OPEN' | 'PAID' | 'CANCELLED' | 'CLOSED' | 'COMPLETED';
@@ -193,6 +277,11 @@ export interface Comanda {
   readyForPayment?: boolean;
   dispatchedAt?: string;
   closedBy?: string;
+  createdBy?: string; // Logged-in user who opened/created this comanda
+  appliedCouponCode?: string; // Code of coupon applied
+  couponDiscount?: number; // Discount amount from coupon
+  creditAmountUsed?: number; // Positive credit deducted from client's balance
+  debtAmountCharged?: number; // Fiado debt registered to customer account
 }
 
 export interface SupplyTransaction {
@@ -216,6 +305,7 @@ export interface SystemParameters {
   closeTime: string; // "19:00"
   defaultCommissionService: number; // e.g. 50%
   defaultCommissionProduct: number; // e.g. 10%
+  defaultClientPassword?: string; // Default password for new clients registered by barbers
   address: string;
   phone: string;
   primaryColor?: string; // e.g. "#eab308" (yellow)
@@ -245,13 +335,21 @@ export interface SystemParameters {
   enableVipServices?: boolean;
   vipServicesPerBarberMonthly?: number; // Max monthly VIP services quota per barber (e.g. 5)
 
-  // Referral Program Config
+  // Referral Program Config (MGM)
   enableReferralProgram?: boolean;
   referralTitle?: string;
   referralDescription?: string;
-  referralDiscountReferrer?: number; // Discount/reward value for the person who referred
-  referralDiscountReferred?: number; // Discount value for the referred friend
+  referralDiscountReferrer?: number; // Discount/reward credit value for the person who referred
+  referralDiscountReferred?: number; // Welcome discount/credit value for the referred friend on 1st purchase
+  referralRewardReferredFirstPurchase?: number; // Welcome bonus credit for referred friend
   referralRulesText?: string;
+
+  // Discount Coupons Config
+  enableCoupons?: boolean; // Enable or disable discount coupons module
+
+  // Customer Credit & Fiado Config
+  enableCustomerCredit?: boolean; // Enable prepaid / advance balance
+  enableCustomerDebt?: boolean; // Enable fiado / debt management
 
   // Customer Portal Banners & Editable Texts
   customerPortalHeaderTitle?: string;

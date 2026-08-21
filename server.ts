@@ -26,7 +26,17 @@ const ai = new GoogleGenAI({
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+
+  // Basic Security Headers Middleware
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
+
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   // API Route - Health Check
   app.get("/api/health", (req, res) => {
@@ -85,7 +95,7 @@ ${supplierText}`,
       }
     } catch (err: any) {
       console.error("API error parsing purchase:", err);
-      res.status(550).json({ error: err.message || "Erro desconhecido na geração" });
+      res.status(500).json({ error: err.message || "Erro desconhecido na geração" });
     }
   });
 

@@ -8,9 +8,10 @@ import {
   Coins, Database, Plus, Trash2, Settings, ToggleLeft, ToggleRight, ShieldAlert,
   UserCheck, Dumbbell, Sparkles, TrendingUp, DollarSign, Coffee, Edit3, Save, Tag,
   MessageSquare, Gift, AlertTriangle, Award, CheckCircle2, Printer, Star, ThumbsUp, MessageCircle,
-  Download, FileSpreadsheet, Filter, Calendar, Crown, Users, Layout, Trophy, Target, Medal, Flame, Percent, RefreshCw
+  Download, FileSpreadsheet, Filter, Calendar, Crown, Users, Layout, Trophy, Target, Medal, Flame, Percent, RefreshCw,
+  Eye, EyeOff, Lock, Key, ShieldCheck, BookOpen, FileText, Ticket, CreditCard, ChevronRight
 } from 'lucide-react';
-import { User, Service, Product, LoyaltyPlan, SystemParameters, BarberDetail, Comanda, SupplyTransaction, Appointment, NPSFeedback, BarberGoalTier, BarberCustomGoal, CustomerBanner } from '../types';
+import { User, Service, Product, LoyaltyPlan, SystemParameters, BarberDetail, Comanda, SupplyTransaction, Appointment, NPSFeedback, BarberGoalTier, BarberCustomGoal, CustomerBanner, OperationalScript, DiscountCoupon, CustomerCreditTransaction } from '../types';
 import { buildWhatsAppReminderUrl, calculateProductABC } from '../utils/helpers';
 import { exportDREReportCSV, exportComandasDetailedCSV, exportDSRClosingCSV } from '../utils/csvExport';
 import { getBarberLeaderboard, calculateBarberGoalProgress, DEFAULT_GOAL_TIERS } from '../utils/goals';
@@ -29,6 +30,9 @@ interface AdminPanelProps {
   categories: string[];
   supplyTransactions: SupplyTransaction[];
   npsFeedbacks?: NPSFeedback[];
+  scripts?: OperationalScript[];
+  coupons?: DiscountCoupon[];
+  creditTransactions?: CustomerCreditTransaction[];
   onUpdateState: (key: string, val: any) => void;
   onResetDatabase?: () => Promise<void>;
 }
@@ -46,11 +50,16 @@ export default function AdminPanel({
   categories,
   supplyTransactions,
   npsFeedbacks = [],
+  scripts = [],
+  coupons = [],
+  creditTransactions = [],
   onUpdateState,
   onResetDatabase
 }: AdminPanelProps) {
   // Toggle sections inside Admin
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'comissoes' | 'cadastros' | 'acessos' | 'parametros' | 'relatorios' | 'fechamento' | 'suprimentos' | 'metas'>('comissoes');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'comissoes' | 'cadastros' | 'acessos' | 'parametros' | 'relatorios' | 'fechamento' | 'suprimentos' | 'metas' | 'scripts'>('comissoes');
+  // Secondary sub-tab inside 'parametros'
+  const [activeParamTab, setActiveParamTab] = useState<'geral' | 'assinaturas' | 'indicacoes_cupons' | 'portal_redes' | 'backup_manutencao'>('geral');
   const [isDraggingLogo, setIsDraggingLogo] = useState(false);
   const [accessRoleFilter, setAccessRoleFilter] = useState<string>('ALL');
 
@@ -66,6 +75,34 @@ export default function AdminPanel({
   const canSubFechamento = isSuperAdmin || perms.includes('VIEW_BILLING');
   const canSubSuprimentos = isSuperAdmin || perms.includes('MANAGE_SUPPLIES') || perms.includes('VIEW_BILLING');
   const canSubMetas = isSuperAdmin || perms.includes('MANAGE_PARAMETERS') || perms.includes('EDIT_COMMISSIONS');
+  const canSubScripts = isSuperAdmin || perms.includes('MANAGE_PARAMETERS') || perms.includes('MANAGE_CATALOG');
+
+  // Modal State for Operational Scripts
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+  const [scriptTitle, setScriptTitle] = useState('');
+  const [scriptCategory, setScriptCategory] = useState<'ATENDIMENTO' | 'CORTE_BARBA' | 'HIGIENE_BIOSSEGURANCA' | 'VENDAS_PRODUTOS' | 'GESTAO_COMANDAS' | 'OUTROS'>('ATENDIMENTO');
+  const [scriptTargetAudience, setScriptTargetAudience] = useState<'TODOS_BARBEIROS' | 'INICIANTES' | 'MESTRES'>('TODOS_BARBEIROS');
+  const [scriptStepsText, setScriptStepsText] = useState('');
+  const [scriptTipsText, setScriptTipsText] = useState('');
+  const [scriptTagsText, setScriptTagsText] = useState('');
+  const [scriptIsActive, setScriptIsActive] = useState(true);
+  const [scriptCategoryFilter, setScriptCategoryFilter] = useState<string>('TODOS');
+  const [scriptSearchTerm, setScriptSearchTerm] = useState('');
+
+  // Modal State for Discount Coupons
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
+  const [cpnCode, setCpnCode] = useState('');
+  const [cpnDescription, setCpnDescription] = useState('');
+  const [cpnDiscountType, setCpnDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED');
+  const [cpnDiscountValue, setCpnDiscountValue] = useState('15');
+  const [cpnMinPurchase, setCpnMinPurchase] = useState('50');
+  const [cpnMaxUsesTotal, setCpnMaxUsesTotal] = useState('');
+  const [cpnMaxUsesPerCustomer, setCpnMaxUsesPerCustomer] = useState('1');
+  const [cpnValidUntil, setCpnValidUntil] = useState('');
+  const [cpnRulesText, setCpnRulesText] = useState('');
+  const [cpnIsActive, setCpnIsActive] = useState(true);
 
   // Modal State for Goal Tiers
   const [showTierModal, setShowTierModal] = useState(false);
@@ -135,6 +172,8 @@ export default function AdminPanel({
   const [usrPhotoUrl, setUsrPhotoUrl] = useState('');
   const [usrBirthday, setUsrBirthday] = useState('');
   const [usrBarberNotes, setUsrBarberNotes] = useState('');
+  const [usrRequiresPasswordChange, setUsrRequiresPasswordChange] = useState<boolean>(true);
+  const [revealedPasswordUserIds, setRevealedPasswordUserIds] = useState<Record<string, boolean>>({});
   const [isRestoringBackup, setIsRestoringBackup] = useState(false);
 
   // Supply Transaction Form states
@@ -592,10 +631,153 @@ export default function AdminPanel({
     setPlnRulesText(p.rules.join('\n'));
   };
 
+  // OPERATIONAL SCRIPTS ACTIONS
+  const handleSaveScript = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scriptTitle.trim()) return;
+
+    const steps = scriptStepsText
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const tags = scriptTagsText
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    const newScript: OperationalScript = {
+      id: editingScriptId || `script-${Date.now()}`,
+      title: scriptTitle.trim(),
+      category: scriptCategory,
+      targetAudience: scriptTargetAudience,
+      content: steps.length > 0 ? steps.join('\n') : 'Executar o atendimento e procedimento conforme padrão da barbearia.',
+      steps: steps.length > 0 ? steps : ['Executar o atendimento e procedimento conforme padrão da barbearia.'],
+      tips: scriptTipsText.trim() || undefined,
+      tags: tags.length > 0 ? tags : [scriptCategory.toLowerCase()],
+      isActive: scriptIsActive,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: currentUser?.name || 'Administrador'
+    };
+
+    let updatedList;
+    if (editingScriptId) {
+      updatedList = scripts.map(s => s.id === editingScriptId ? newScript : s);
+    } else {
+      updatedList = [...scripts, newScript];
+    }
+
+    onUpdateState('scripts', updatedList);
+    setShowScriptModal(false);
+    setEditingScriptId(null);
+    setScriptTitle('');
+    setScriptCategory('ATENDIMENTO');
+    setScriptTargetAudience('TODOS_BARBEIROS');
+    setScriptStepsText('');
+    setScriptTipsText('');
+    setScriptTagsText('');
+    setScriptIsActive(true);
+  };
+
+  const handleDeleteScript = (id: string) => {
+    if (confirm('Tem certeza de que deseja excluir este script operacional?')) {
+      onUpdateState('scripts', scripts.filter(s => s.id !== id));
+    }
+  };
+
+  const handleToggleScriptActive = (id: string) => {
+    const updated = scripts.map(s => s.id === id ? { ...s, isActive: s.isActive === false ? true : false } : s);
+    onUpdateState('scripts', updated);
+  };
+
+  const handleEditScriptSelect = (s: OperationalScript) => {
+    setEditingScriptId(s.id);
+    setScriptTitle(s.title);
+    setScriptCategory((s.category || 'ATENDIMENTO') as any);
+    setScriptTargetAudience((s.targetAudience || 'TODOS_BARBEIROS') as any);
+    setScriptStepsText(s.steps && s.steps.length > 0 ? s.steps.join('\n') : (s.content || ''));
+    setScriptTipsText(s.tips || '');
+    setScriptTagsText(s.tags ? s.tags.join(', ') : '');
+    setScriptIsActive(s.isActive !== false);
+    setShowScriptModal(true);
+  };
+
+  // DISCOUNT COUPONS ACTIONS
+  const handleSaveCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cpnCode.trim()) return;
+
+    const newCoupon: DiscountCoupon = {
+      id: editingCouponId || `cpn-${Date.now()}`,
+      code: cpnCode.trim().toUpperCase(),
+      description: cpnDescription.trim(),
+      discountType: cpnDiscountType,
+      discountValue: parseFloat(cpnDiscountValue) || 0,
+      minPurchaseAmount: parseFloat(cpnMinPurchase) || 0,
+      maxUsesTotal: cpnMaxUsesTotal ? parseInt(cpnMaxUsesTotal) : undefined,
+      maxUsesPerCustomer: parseInt(cpnMaxUsesPerCustomer) || 1,
+      timesUsed: editingCouponId ? (coupons.find(c => c.id === editingCouponId)?.timesUsed || 0) : 0,
+      validUntil: cpnValidUntil || undefined,
+      rulesText: cpnRulesText.trim() || undefined,
+      isActive: cpnIsActive,
+      createdAt: new Date().toISOString()
+    };
+
+    let updatedList;
+    if (editingCouponId) {
+      updatedList = coupons.map(c => c.id === editingCouponId ? newCoupon : c);
+    } else {
+      updatedList = [...coupons, newCoupon];
+    }
+
+    onUpdateState('coupons', updatedList);
+    setShowCouponModal(false);
+    setEditingCouponId(null);
+    setCpnCode('');
+    setCpnDescription('');
+    setCpnDiscountType('FIXED');
+    setCpnDiscountValue('15');
+    setCpnMinPurchase('50');
+    setCpnMaxUsesTotal('');
+    setCpnMaxUsesPerCustomer('1');
+    setCpnValidUntil('');
+    setCpnRulesText('');
+    setCpnIsActive(true);
+  };
+
+  const handleDeleteCoupon = (id: string) => {
+    if (confirm('Tem certeza de que deseja excluir este cupom de desconto?')) {
+      onUpdateState('coupons', coupons.filter(c => c.id !== id));
+    }
+  };
+
+  const handleToggleCouponActive = (id: string) => {
+    const updated = coupons.map(c => c.id === id ? { ...c, isActive: !c.isActive } : c);
+    onUpdateState('coupons', updated);
+  };
+
+  const handleEditCouponSelect = (c: DiscountCoupon) => {
+    setEditingCouponId(c.id);
+    setCpnCode(c.code);
+    setCpnDescription(c.description || '');
+    setCpnDiscountType(c.discountType);
+    setCpnDiscountValue(c.discountValue.toString());
+    setCpnMinPurchase(c.minPurchaseAmount.toString());
+    setCpnMaxUsesTotal(c.maxUsesTotal ? c.maxUsesTotal.toString() : '');
+    setCpnMaxUsesPerCustomer(c.maxUsesPerCustomer.toString());
+    setCpnValidUntil(c.validUntil || '');
+    setCpnRulesText(c.rulesText || '');
+    setCpnIsActive(c.isActive);
+    setShowCouponModal(true);
+  };
+
   // USER MANAGEMENT & CREDENTIALS
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!usrName || !usrLogin || !usrPassword) return;
+    const existingUser = editingUserId ? users.find(u => u.id === editingUserId) : null;
+    const finalPassword = usrPassword.trim() !== '' ? usrPassword.trim() : (existingUser?.password || '');
+    if (!usrName || !usrLogin || !finalPassword) return;
 
     // Build standard permissions based on role
     let customPerms: string[] = [];
@@ -612,7 +794,7 @@ export default function AdminPanel({
     const newUser: User = {
       id: editingUserId || `usr-${Date.now()}`,
       name: usrName,
-      email: usrEmail || `${usrLogin}@logoali.com`,
+      email: usrEmail || `${usrLogin}@trimastudio.com`,
       role: usrRole,
       phone: usrPhone || '',
       isActive: true,
@@ -620,10 +802,13 @@ export default function AdminPanel({
       bio: usrRole === 'BARBER' ? (usrBio || '') : '',
       photoUrl: usrRole === 'BARBER' ? (usrPhotoUrl || '') : '',
       login: usrLogin.trim().toLowerCase(),
-      password: usrPassword,
-      permissions: customPerms,
+      password: finalPassword,
+      permissions: existingUser?.permissions || customPerms,
       birthday: usrBirthday || '',
-      barberNotes: usrBarberNotes || ''
+      barberNotes: usrBarberNotes || '',
+      requiresPasswordChange: editingUserId ? (usrRequiresPasswordChange) : usrRequiresPasswordChange,
+      createdBy: existingUser?.createdBy || currentUser?.name || currentUser?.login || 'Administrador',
+      createdAt: existingUser?.createdAt || new Date().toISOString()
     };
 
     let updatedList;
@@ -660,6 +845,7 @@ export default function AdminPanel({
     setUsrPhotoUrl('');
     setUsrBirthday('');
     setUsrBarberNotes('');
+    setUsrRequiresPasswordChange(true);
   };
 
   // Bulk Register Parsing and Handlers
@@ -787,7 +973,10 @@ export default function AdminPanel({
         avatar: u.role === 'ADMIN' ? '👑' : u.role === 'BARBER' ? '🧔' : u.role === 'CASHIER' ? '💼' : '👨',
         login: u.login,
         password: u.password,
-        permissions: customPerms
+        permissions: customPerms,
+        requiresPasswordChange: true,
+        createdBy: currentUser?.name || currentUser?.login || 'Administrador',
+        createdAt: new Date().toISOString()
       };
 
       createdUsers.push(newUser);
@@ -1251,6 +1440,16 @@ export default function AdminPanel({
             }`}
           >
             🏆 Metas & Gamificação
+          </button>
+        )}
+        {canSubScripts && (
+          <button
+            onClick={() => setActiveAdminSubTab('scripts')}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wider uppercase font-mono transition duration-150 cursor-pointer ${
+              activeAdminSubTab === 'scripts' ? 'bg-yellow-500 text-black font-bold' : 'bg-[#151518] hover:bg-zinc-850 text-zinc-400'
+            }`}
+          >
+            📜 Scripts Operacionais ({scripts.length})
           </button>
         )}
       </div>
@@ -2175,10 +2374,59 @@ export default function AdminPanel({
                               </span>
                             )}
                             <div>
-                              <p className="font-bold text-white leading-none">{u.name}</p>
-                              <p className="text-[10px] text-zinc-400 mt-1">
-                                Login: <strong className="text-yellow-500 font-mono">{u.login}</strong> | Senha: <span className="font-mono text-zinc-500">{u.password}</span>
-                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-white leading-none">{u.name}</p>
+                                {u.requiresPasswordChange && (
+                                  <span className="text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold" title="Deve redefinir a senha no próximo acesso">
+                                    🔑 1º Acesso Pendente
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 mt-1.5 flex items-center gap-2 flex-wrap">
+                                <span>Login: <strong className="text-yellow-500 font-mono">{u.login}</strong></span>
+                                <span>•</span>
+                                {u.role === 'ADMIN' ? (
+                                  currentUser && currentUser.id === u.id ? (
+                                    <span className="flex items-center gap-1 font-mono text-zinc-300 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
+                                      <span className="text-zinc-500">Sua Senha:</span>
+                                      <span className="text-yellow-400 font-bold">{revealedPasswordUserIds[u.id] ? u.password : '••••••••'}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setRevealedPasswordUserIds(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                                        className="text-zinc-400 hover:text-white ml-0.5 cursor-pointer"
+                                        title={revealedPasswordUserIds[u.id] ? "Ocultar senha" : "Ver minha senha"}
+                                      >
+                                        {revealedPasswordUserIds[u.id] ? <EyeOff className="w-3 h-3 text-yellow-500" /> : <Eye className="w-3 h-3" />}
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 font-mono text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800/80">
+                                      <span className="text-zinc-500">Senha:</span>
+                                      <span className="text-zinc-500 font-bold">••••••••</span>
+                                      <span className="text-[9px] text-zinc-500 font-mono bg-zinc-900 px-1 rounded ml-0.5">🔒 Protegida</span>
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="flex items-center gap-1 font-mono text-zinc-300 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
+                                    <span className="text-zinc-500">Senha:</span>
+                                    <span className="text-zinc-300">{revealedPasswordUserIds[u.id] ? u.password : '••••••••'}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRevealedPasswordUserIds(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                                      className="text-zinc-400 hover:text-white ml-0.5 cursor-pointer"
+                                      title={revealedPasswordUserIds[u.id] ? "Ocultar senha" : "Ver senha"}
+                                    >
+                                      {revealedPasswordUserIds[u.id] ? <EyeOff className="w-3 h-3 text-yellow-500" /> : <Eye className="w-3 h-3" />}
+                                    </button>
+                                  </span>
+                                )}
+                                {u.createdBy && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-[9px] text-zinc-500 font-mono">Cadastrado por: <strong className="text-zinc-400">{u.createdBy}</strong></span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -2223,11 +2471,16 @@ export default function AdminPanel({
                                 setUsrPhone(u.phone || '');
                                 setUsrRole(u.role);
                                 setUsrLogin(u.login || '');
-                                setUsrPassword(u.password || '');
+                                if (u.role === 'ADMIN' && currentUser && currentUser.id !== u.id) {
+                                  setUsrPassword('');
+                                } else {
+                                  setUsrPassword(u.password || '');
+                                }
                                 setUsrBio(u.bio || '');
                                 setUsrPhotoUrl(u.photoUrl || '');
                                 setUsrBirthday(u.birthday || '');
                                 setUsrBarberNotes(u.barberNotes || '');
+                                setUsrRequiresPasswordChange(Boolean(u.requiresPasswordChange));
                               }}
                               className="px-2 py-1 bg-zinc-900 border border-zinc-805 hover:text-yellow-500 text-[10px] uppercase font-mono rounded inline-block cursor-pointer transition"
                             >
@@ -2469,17 +2722,42 @@ export default function AdminPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Senha Secreta</label>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide flex items-center justify-between">
+                    <span>{editingUserId && users.find(u => u.id === editingUserId)?.role === 'ADMIN' && currentUser?.id !== editingUserId ? 'Nova Senha' : 'Senha'}</span>
+                    {editingUserId && <span className="text-[8px] text-zinc-500 normal-case">(opcional se mantiver)</span>}
+                  </label>
                   <input
                     type="text"
-                    required
+                    required={!editingUserId}
                     value={usrPassword}
                     onChange={(e) => setUsrPassword(e.target.value)}
-                    placeholder="Ex: 50503"
+                    placeholder={editingUserId ? "Deixe em branco p/ manter" : "Ex: 123456"}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                   />
                 </div>
               </div>
+
+              {/* Obrigatória troca de senha no 1º acesso */}
+              <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800/80">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={usrRequiresPasswordChange}
+                    onChange={(e) => setUsrRequiresPasswordChange(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-800 bg-[#121214] text-yellow-500 focus:ring-0 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-yellow-500" />
+                      <span>Exigir troca de senha no 1º acesso</span>
+                    </span>
+                    <span className="text-[9px] text-zinc-400 block leading-tight mt-0.5">
+                      Recomendado para senhas padrão. No primeiro acesso o usuário será obrigado a cadastrar sua própria senha.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Perfil / Role</label>
@@ -2574,9 +2852,16 @@ export default function AdminPanel({
                     onClick={() => {
                       setEditingUserId(null);
                       setUsrName('');
+                      setUsrEmail('');
                       setUsrLogin('');
                       setUsrPassword('');
                       setUsrPhone('');
+                      setUsrRole('BARBER');
+                      setUsrBio('');
+                      setUsrPhotoUrl('');
+                      setUsrBirthday('');
+                      setUsrBarberNotes('');
+                      setUsrRequiresPasswordChange(true);
                     }}
                     className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-400 font-semibold text-xs py-2 rounded-lg cursor-pointer"
                   >
@@ -5658,6 +5943,313 @@ export default function AdminPanel({
           </div>
         );
       })()}
+
+      {/* 9. ABA SCRIPTS OPERACIONAIS (POP) */}
+      {activeAdminSubTab === 'scripts' && (
+        <div className="space-y-6 animate-fadeIn text-left">
+          {/* Header do Módulo */}
+          <div className="bg-[#101012] border border-zinc-800 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold uppercase font-mono tracking-wider text-yellow-500 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-yellow-400" />
+                Manual de Padrões & Scripts Operacionais (POP)
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
+                Cadastre, edite e categorize procedimentos operacionais padrão, técnicas de atendimento, regras de biossegurança e roteiros de vendas. Todos os scripts ativos ficam disponíveis na aba do barbeiro para consulta rápida e padronização da equipe.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingScriptId(null);
+                setScriptTitle('');
+                setScriptCategory('ATENDIMENTO');
+                setScriptTargetAudience('TODOS_BARBEIROS');
+                setScriptStepsText('');
+                setScriptTipsText('');
+                setScriptTagsText('');
+                setScriptIsActive(true);
+                setShowScriptModal(true);
+              }}
+              className="px-4 py-2.5 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold font-mono text-xs rounded-xl shadow-lg flex items-center gap-2 cursor-pointer transition shrink-0 self-start md:self-auto"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Script Operacional
+            </button>
+          </div>
+
+          {/* Filtros e Busca */}
+          <div className="bg-[#101012] border border-zinc-800 p-4 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={scriptSearchTerm}
+                  onChange={(e) => setScriptSearchTerm(e.target.value)}
+                  placeholder="Buscar por título, conteúdo, etapas, dicas ou tags..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white placeholder-zinc-500 focus:border-yellow-500 outline-none font-mono"
+                />
+                {scriptSearchTerm && (
+                  <button
+                    onClick={() => setScriptSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <span className="text-[11px] text-zinc-500 font-mono shrink-0">
+                {scripts.length} script(s) cadastrado(s)
+              </span>
+            </div>
+
+            {/* Categorias Pills */}
+            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-850">
+              {[
+                { id: 'TODOS', label: 'Todos os Scripts' },
+                { id: 'ATENDIMENTO', label: '🛎️ Atendimento & Recepção' },
+                { id: 'CORTE_BARBA', label: '✂️ Corte & Barba' },
+                { id: 'HIGIENE_BIOSSEGURANCA', label: '🧼 Higiene & Biossegurança' },
+                { id: 'VENDAS_PRODUTOS', label: '💼 Vendas & Pós-Venda' },
+                { id: 'GESTAO_COMANDAS', label: '🧾 Comandas & Caixa' },
+                { id: 'OUTROS', label: '📋 Outros Padrões' }
+              ].map((cat) => {
+                const count = cat.id === 'TODOS'
+                  ? scripts.length
+                  : scripts.filter(s => (s.category || 'ATENDIMENTO') === cat.id).length;
+                const isSelected = scriptCategoryFilter === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setScriptCategoryFilter(cat.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-yellow-500 text-black font-bold shadow-xs'
+                        : 'bg-zinc-950 text-zinc-400 hover:bg-zinc-900 hover:text-white border border-zinc-850'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-black/20 text-black font-extrabold' : 'bg-zinc-800 text-zinc-400'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Listagem de Scripts */}
+          {(() => {
+            const filteredScripts = scripts.filter(s => {
+              if (scriptCategoryFilter !== 'TODOS' && (s.category || 'ATENDIMENTO') !== scriptCategoryFilter) {
+                return false;
+              }
+              if (scriptSearchTerm.trim()) {
+                const q = scriptSearchTerm.toLowerCase();
+                const titleMatch = s.title?.toLowerCase().includes(q);
+                const tipsMatch = s.tips?.toLowerCase().includes(q);
+                const stepsMatch = s.steps?.some(st => st.toLowerCase().includes(q));
+                const contentMatch = s.content?.toLowerCase().includes(q);
+                const tagsMatch = s.tags?.some(tg => tg.toLowerCase().includes(q));
+                return titleMatch || tipsMatch || stepsMatch || contentMatch || tagsMatch;
+              }
+              return true;
+            });
+
+            if (filteredScripts.length === 0) {
+              return (
+                <div className="bg-[#101012] border border-zinc-800 p-12 rounded-2xl text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-yellow-500/10 text-yellow-500 flex items-center justify-center mx-auto text-2xl">
+                    📜
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white uppercase font-mono">Nenhum script encontrado</h4>
+                    <p className="text-xs text-zinc-400 mt-1 max-w-md mx-auto">
+                      {scriptSearchTerm || scriptCategoryFilter !== 'TODOS'
+                        ? 'Nenhum script corresponde aos filtros atuais. Tente buscar outro termo ou limpar os filtros.'
+                        : 'Ainda não há scripts operacionais cadastrados no sistema. Crie o primeiro para padronizar os processos.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingScriptId(null);
+                      setScriptTitle('');
+                      setScriptCategory('ATENDIMENTO');
+                      setScriptTargetAudience('TODOS_BARBEIROS');
+                      setScriptStepsText('');
+                      setScriptTipsText('');
+                      setScriptTagsText('');
+                      setScriptIsActive(true);
+                      setShowScriptModal(true);
+                    }}
+                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold font-mono text-xs rounded-xl shadow cursor-pointer inline-flex items-center gap-2 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Cadastrar Primeiro Script
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredScripts.map((s) => {
+                  const categoryBadgeColor = (() => {
+                    switch (s.category) {
+                      case 'ATENDIMENTO':
+                        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+                      case 'CORTE_BARBA':
+                        return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                      case 'HIGIENE_BIOSSEGURANCA':
+                        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                      case 'VENDAS_PRODUTOS':
+                        return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+                      case 'GESTAO_COMANDAS':
+                        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+                      default:
+                        return 'bg-zinc-800 text-zinc-300 border-zinc-700';
+                    }
+                  })();
+
+                  const categoryLabel = (() => {
+                    switch (s.category) {
+                      case 'ATENDIMENTO': return '🛎️ Atendimento';
+                      case 'CORTE_BARBA': return '✂️ Corte & Barba';
+                      case 'HIGIENE_BIOSSEGURANCA': return '🧼 Higiene & Biossegurança';
+                      case 'VENDAS_PRODUTOS': return '💼 Vendas & Produtos';
+                      case 'GESTAO_COMANDAS': return '🧾 Comandas';
+                      default: return '📋 Geral';
+                    }
+                  })();
+
+                  const targetLabel = (() => {
+                    switch (s.targetAudience) {
+                      case 'INICIANTES': return '🎯 Treinamento / Júnior';
+                      case 'MESTRES': return '👑 Barbeiros Sênior';
+                      default: return '👥 Toda a Equipe';
+                    }
+                  })();
+
+                  const stepsList = s.steps && s.steps.length > 0
+                    ? s.steps
+                    : (s.content ? s.content.split('\n').map(x => x.trim()).filter(Boolean) : []);
+
+                  return (
+                    <div
+                      key={s.id}
+                      className={`bg-[#101012] border rounded-2xl p-5 space-y-4 transition flex flex-col justify-between ${
+                        s.isActive === false
+                          ? 'border-zinc-850 opacity-60'
+                          : 'border-zinc-800 hover:border-yellow-500/40 shadow-sm'
+                      }`}
+                    >
+                      {/* Top Header Card */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase border ${categoryBadgeColor}`}>
+                              {categoryLabel}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono text-zinc-400 bg-zinc-950 border border-zinc-850">
+                              {targetLabel}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleScriptActive(s.id)}
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded-full transition cursor-pointer font-bold ${
+                                s.isActive !== false
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                              }`}
+                              title="Clique para alternar ativação"
+                            >
+                              {s.isActive !== false ? '● Ativo' : '○ Inativo'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleEditScriptSelect(s)}
+                              className="p-1.5 bg-zinc-900 hover:bg-yellow-500/20 text-zinc-400 hover:text-yellow-400 rounded-lg transition cursor-pointer border border-zinc-800"
+                              title="Editar Script"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteScript(s.id)}
+                              className="p-1.5 bg-zinc-900 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition cursor-pointer border border-zinc-800"
+                              title="Excluir Script"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-white font-mono leading-snug">
+                          {s.title}
+                        </h4>
+                      </div>
+
+                      {/* Steps / Checklist */}
+                      <div className="space-y-2 bg-zinc-950 border border-zinc-850/80 p-3.5 rounded-xl">
+                        <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold block">
+                          Passo a Passo / Procedimento:
+                        </span>
+                        <div className="space-y-1.5 text-xs text-zinc-300 font-sans">
+                          {stepsList.map((step, stepIdx) => (
+                            <div key={stepIdx} className="flex items-start gap-2">
+                              <span className="w-4 h-4 rounded-full bg-yellow-500/20 text-yellow-400 text-[10px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                {stepIdx + 1}
+                              </span>
+                              <span className="leading-relaxed">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Tips Box (if exists) */}
+                      {s.tips && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl space-y-1">
+                          <span className="text-[10px] uppercase font-mono text-amber-400 font-bold flex items-center gap-1.5">
+                            💡 Dica de Ouro / Argumentação:
+                          </span>
+                          <p className="text-xs text-zinc-300 leading-relaxed font-sans">
+                            {s.tips}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Tags & Footer Info */}
+                      <div className="pt-2 border-t border-zinc-850 flex items-center justify-between gap-2 flex-wrap text-[10px] text-zinc-500 font-mono">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {s.tags && s.tags.length > 0 ? (
+                            s.tags.map((t, idx) => (
+                              <span key={idx} className="bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">
+                                #{t}
+                              </span>
+                            ))
+                          ) : (
+                            <span>Sem tags</span>
+                          )}
+                        </div>
+                        <span>
+                          {s.updatedAt ? new Date(s.updatedAt).toLocaleDateString('pt-BR') : 'Recente'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
       </ErrorBoundary>
       {/* MODAL: CRIAR / EDITAR BANNER */}
       {showBannerModal && (
@@ -6070,6 +6662,151 @@ export default function AdminPanel({
                   className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold rounded-lg cursor-pointer shadow"
                 >
                   Salvar Nível de Meta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CRIAR / EDITAR SCRIPT OPERACIONAL */}
+      {showScriptModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#101012] border border-zinc-800 rounded-2xl w-full max-w-xl p-6 space-y-4 text-left shadow-2xl animate-fadeIn font-mono">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-yellow-500 flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-yellow-400" />
+                {editingScriptId ? 'Editar Script Operacional' : 'Novo Script Operacional (POP)'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowScriptModal(false)}
+                className="text-zinc-400 hover:text-white text-xs font-bold cursor-pointer"
+              >
+                ✕ FECHAR
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveScript} className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase block mb-1">
+                  Título do Procedimento / Script *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={scriptTitle}
+                  onChange={(e) => setScriptTitle(e.target.value)}
+                  placeholder="Ex: Recepção e Consulta de Visagismo"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:border-yellow-500 outline-none font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase block mb-1">
+                    Categoria *
+                  </label>
+                  <select
+                    value={scriptCategory}
+                    onChange={(e) => setScriptCategory(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:border-yellow-500 outline-none"
+                  >
+                    <option value="ATENDIMENTO">🛎️ Atendimento & Recepção</option>
+                    <option value="CORTE_BARBA">✂️ Corte, Barba & Visagismo</option>
+                    <option value="HIGIENE_BIOSSEGURANCA">🧼 Higiene & Biossegurança</option>
+                    <option value="VENDAS_PRODUTOS">💼 Vendas & Pós-Atendimento</option>
+                    <option value="GESTAO_COMANDAS">🧾 Gestão de Comandas & Caixa</option>
+                    <option value="OUTROS">📋 Outros Padrões</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase block mb-1">
+                    Público-Alvo *
+                  </label>
+                  <select
+                    value={scriptTargetAudience}
+                    onChange={(e) => setScriptTargetAudience(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:border-yellow-500 outline-none"
+                  >
+                    <option value="TODOS_BARBEIROS">👥 Toda a Equipe de Barbeiros</option>
+                    <option value="INICIANTES">🎯 Barbeiros em Treinamento / Júnior</option>
+                    <option value="MESTRES">👑 Barbeiros Sênior / Mestres</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase block mb-1">
+                  Status de Publicação
+                </label>
+                <select
+                  value={scriptIsActive ? 'active' : 'inactive'}
+                  onChange={(e) => setScriptIsActive(e.target.value === 'active')}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:border-yellow-500 outline-none"
+                >
+                  <option value="active">● Ativo (Visível na aba dos barbeiros)</option>
+                  <option value="inactive">○ Inativo (Rascunho / Oculto)</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] text-zinc-400 uppercase block">
+                    Passo a Passo do Procedimento *
+                  </label>
+                  <span className="text-[9px] text-zinc-500">Digite uma etapa por linha</span>
+                </div>
+                <textarea
+                  rows={4}
+                  required
+                  value={scriptStepsText}
+                  onChange={(e) => setScriptStepsText(e.target.value)}
+                  placeholder={'1. Cumprimente o cliente chamando-o pelo nome cadastrado.\n2. Ofereça água, café ou cerveja da casa.\n3. Faça a análise de visagismo antes de iniciar o corte.'}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-sans leading-relaxed text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-amber-400 uppercase font-bold block mb-1">
+                  💡 Dicas de Ouro & Argumentos de Venda (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={scriptTipsText}
+                  onChange={(e) => setScriptTipsText(e.target.value)}
+                  placeholder="Ex: Explique o modo de usar da pomada enquanto finaliza o cabelo no espelho."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-sans text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase block mb-1">
+                  Tags de Busca / Palavras-chave (Separadas por vírgula)
+                </label>
+                <input
+                  type="text"
+                  value={scriptTagsText}
+                  onChange={(e) => setScriptTagsText(e.target.value)}
+                  placeholder="Ex: Recepção, Visagismo, Encantamento, Vendas"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white focus:border-yellow-500 outline-none font-sans"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowScriptModal(false)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold rounded-lg cursor-pointer transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold rounded-lg cursor-pointer shadow transition"
+                >
+                  {editingScriptId ? 'Salvar Alterações' : 'Cadastrar Script'}
                 </button>
               </div>
             </form>

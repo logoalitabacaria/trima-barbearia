@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, BarberDetail, Service, Product, LoyaltyPlan, CustomerSubscription, Appointment, Comanda, SystemParameters, SupplyTransaction } from './types';
+import { User, BarberDetail, Service, Product, LoyaltyPlan, CustomerSubscription, Appointment, Comanda, SystemParameters, SupplyTransaction, OperationalScript, DiscountCoupon, CustomerCreditTransaction } from './types';
 
 export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   shopName: "Trima Studio",
@@ -19,7 +19,7 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   subDiscount3to4: 0.12,
   subDiscount5to6: 0.20,
   subDiscount7Plus: 0.28,
-  paymentMethods: ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA'],
+  paymentMethods: ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA', 'CRÉDITO ANTECIPADO', 'FIADO (A PRAZO)'],
   whatsappTemplate: "Olá {NOME}! Confirmamos o seu agendamento no {LOJA} em {DATA} às {HORA} com o profissional {BARBEIRO} ({SERVICO}). Te esperamos!",
   enableLoyalty: true,
   loyaltyPointsPerReal: 1, // 1 ponto por cada R$ 1 gasto
@@ -35,11 +35,22 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   enableVipServices: true,
   vipServicesPerBarberMonthly: 5,
 
-  // Referral Discount Program
+  // Referral Program Config (MGM)
   enableReferralProgram: true,
-  referralDiscountReferrer: 10, // R$ 10 discount for referrer
-  referralDiscountReferred: 10, // R$ 10 discount for referred friend
-  referralRulesText: "Indique seus amigos com o seu código exclusivo. Seu amigo ganha R$ 10,00 de desconto no primeiro atendimento e você ganha R$ 10,00 no seu próximo corte!",
+  referralDiscountReferrer: 10, // R$ 10 discount/credit for referrer upon first purchase of friend
+  referralDiscountReferred: 10, // R$ 10 discount for referred friend on 1st purchase
+  referralRewardReferredFirstPurchase: 10, // R$ 10 bonus credit for referred friend
+  referralRulesText: "Compartilhe seu link exclusivo com amigos. Seu amigo ganha R$ 10,00 de bônus no primeiro atendimento e você recebe R$ 10,00 de crédito em sua conta assim que ele finalizar a compra!",
+
+  // Coupons System
+  enableCoupons: true,
+
+  // Default Password for New Clients Created by Barbers / Staff
+  defaultClientPassword: 'cliente123',
+
+  // Customer Credit & Fiado
+  enableCustomerCredit: true,
+  enableCustomerDebt: true,
 
   // Customer Portal Texts & Banners
   customerPortalWelcomeText: "Seja bem-vindo ao Trima Studio! Agende seu horário com os melhores profissionais da cidade.",
@@ -148,8 +159,8 @@ export const INITIAL_USERS: User[] = [
     phone: '(11) 99999-9999',
     isActive: true,
     avatar: '👑',
-    login: 'wagnerbmoreno@gmail.com',
-    password: 'Wag01121201!',
+    login: 'wagner',
+    password: '123',
     permissions: ['VIEW_BILLING', 'EDIT_COMMISSIONS', 'MANAGE_USERS', 'MANAGE_APPOINTMENTS', 'EDIT_COMANDAS', 'CHECKOUT_COMANDAS', 'CUSTOMER_PORTAL', 'DAILY_FACILITATOR']
   }
 ];
@@ -313,6 +324,121 @@ export const INITIAL_APPOINTMENTS: Appointment[] = [];
 
 export const INITIAL_COMANDAS: Comanda[] = [];
 
+export const INITIAL_SCRIPTS: OperationalScript[] = [
+  {
+    id: 'script-1',
+    title: 'Recepção Cordial e Análise de Visagismo',
+    category: 'ATENDIMENTO',
+    content: `1. Receba o cliente com aperto de mão ou cumprimento cordial, chamando-o pelo nome cadastrado.
+2. Ofereça água, café expresso ou cortesia da casa.
+3. Antes de molhar ou cortar, sente de frente para o espelho e faça a análise do formato do rosto e alinhamento da barba.
+4. Pergunte: "Como você costuma pentear no dia a dia?" e "Qual a sua rotina de cuidados?".
+5. Apresente as opções recomendadas com clareza antes de iniciar o corte.`,
+    tips: 'A primeira impressão define a confiança. Olhe nos olhos do cliente e escute ativamente.',
+    targetAudience: 'TODOS',
+    tags: ['Recepção', 'Visagismo', 'Encantamento', 'Primeiro Contato'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'Administrador'
+  },
+  {
+    id: 'script-2',
+    title: 'Protocolo de Biossegurança e Esterilização',
+    category: 'HIGIENE & BIOSSEGURANÇA',
+    content: `1. Lâminas: NUNCA reutilize lâminas de barbear. Descarte imediatamente na caixa Descarpack na presença do cliente.
+2. Pentes e Máquinas: Borrife álcool 70% ou spray desinfetante após cada atendimento.
+3. Golas Higiênicas: Uso obrigatório da gola descartável antes de colocar a capa de corte.
+4. Bancada: Mantenha sempre limpa de fios e cabelos com auxílio do espanador e pano de microfibra.`,
+    tips: 'A esterilização na frente do cliente transmite profissionalismo e segurança máxima.',
+    targetAudience: 'TODOS',
+    tags: ['Biossegurança', 'Higiene', 'Normas', 'Lâminas'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'Administrador'
+  },
+  {
+    id: 'script-3',
+    title: 'Recomendação de Produtos no Pós-Corte',
+    category: 'VENDAS & PRODUTOS',
+    content: `1. Ao finalizar o penteado, mostre o produto utilizado (pomada matte, óleo de barba, balm ou pós-barba).
+2. Explique como aplicar: "Coloque uma moeda de 1 real na palma, espalhe bem e aplique da raiz às pontas."
+3. Pergunte naturalmente: "Você já tem essa pomada em casa para manter o penteado perfeito até o próximo retorno?"
+4. Informe que os produtos da barbearia acumulam comissão para o barbeiro e pontos de fidelidade para o cliente.`,
+    tips: 'Venda por consultoria, nunca force. Mostre os benefícios reais para o cabelo dele.',
+    targetAudience: 'BARBEIROS',
+    tags: ['Vendas', 'Produtos', 'Comissão', 'Finalização'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'Administrador'
+  },
+  {
+    id: 'script-4',
+    title: 'Agendamento de Retorno e Fidelização',
+    category: 'FIDELIZAÇÃO & PÓS-VENDA',
+    content: `1. Ao retirar a capa, mostre a nuca e a barba com o espelho de mão.
+2. Pergunte: "Gostou do resultado? Ficou no padrão que você esperava?"
+3. Diga: "Para manter esse degradê sempre alinhado, o ideal é refazer a cada 15 ou 20 dias. Vamos já deixar seu próximo horário reservado?"
+4. Explique o aplicativo e como ele pode acumular pontos de fidelidade e indicar amigos com o link exclusivo.`,
+    tips: 'Garantir a volta na cadeira é a chave para a agenda cheia todo mês.',
+    targetAudience: 'TODOS',
+    tags: ['Fidelização', 'Retorno', 'NPS', 'Indicação'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'Administrador'
+  },
+  {
+    id: 'script-5',
+    title: 'Técnica de Barbaterapia com Toalha Quente',
+    category: 'TÉCNICAS & PROCEDIMENTOS',
+    content: `1. Aplicação de óleo pré-barba com massagem circular no rosto.
+2. Aqueça a toalha no vaporizador com óleo essencial de eucalipto ou menta.
+3. Aplique a toalha quente no rosto por 2 a 3 minutos para abrir os poros e amaciar os fios.
+4. Aplique o shaving gel transparente e execute o desenho da barba no sentido do crescimento dos fios.
+5. Finalize com toalha fria para fechar os poros e aplique balm ou loção pós-barba calmante.`,
+    tips: 'Ajuste a temperatura da toalha no dorso da sua mão antes de colocar no rosto do cliente.',
+    targetAudience: 'BARBEIROS',
+    tags: ['Barbaterapia', 'Toalha Quente', 'Relaxamento', 'Técnica'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'Administrador'
+  }
+];
+
+export const INITIAL_COUPONS: DiscountCoupon[] = [
+  {
+    id: 'coupon-1',
+    code: 'BEMVINDO10',
+    description: 'Cupom de 10% de desconto para novos clientes ou divulgação especial.',
+    discountType: 'PERCENTAGE',
+    discountValue: 10,
+    minPurchaseAmount: 30,
+    maxUsesTotal: 100,
+    maxUsesPerCustomer: 1,
+    timesUsed: 0,
+    validUntil: '2027-12-31',
+    isActive: true,
+    rulesText: 'Válido para qualquer serviço ou combo da barbearia. Não cumulativo com outras promoções.',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'coupon-2',
+    code: 'TRIMA15',
+    description: 'Desconto fixo de R$ 15,00 em compras acima de R$ 60,00.',
+    discountType: 'FIXED',
+    discountValue: 15,
+    minPurchaseAmount: 60,
+    maxUsesTotal: 50,
+    maxUsesPerCustomer: 1,
+    timesUsed: 0,
+    validUntil: '2027-12-31',
+    isActive: true,
+    rulesText: 'Desconto direto no valor total da comanda.',
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const INITIAL_CREDIT_TRANSACTIONS: CustomerCreditTransaction[] = [];
+
 export function getSavedState() {
   const getLocal = (key: string, defaultVal: any) => {
     try {
@@ -341,7 +467,11 @@ export function getSavedState() {
       parameters: INITIAL_SYSTEM_PARAMETERS,
       categories: ['HAIR', 'BEARD', 'COMBO', 'TREATMENT'],
       supplyTransactions: [],
-      npsFeedbacks: []
+      npsFeedbacks: [],
+      scripts: INITIAL_SCRIPTS,
+      coupons: INITIAL_COUPONS,
+      creditTransactions: INITIAL_CREDIT_TRANSACTIONS,
+      barberPayouts: []
     };
   }
 
@@ -357,7 +487,11 @@ export function getSavedState() {
     parameters: getLocal('parameters', INITIAL_SYSTEM_PARAMETERS),
     categories: getLocal('categories', ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']),
     supplyTransactions: getLocal('supplyTransactions', []),
-    npsFeedbacks: getLocal('npsFeedbacks', [])
+    npsFeedbacks: getLocal('npsFeedbacks', []),
+    scripts: getLocal('scripts', INITIAL_SCRIPTS),
+    coupons: getLocal('coupons', INITIAL_COUPONS),
+    creditTransactions: getLocal('creditTransactions', INITIAL_CREDIT_TRANSACTIONS),
+    barberPayouts: getLocal('barberPayouts', [])
   };
 }
 

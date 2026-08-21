@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Scissors, Star, Check, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon } from 'lucide-react';
-import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner } from '../types';
+import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner, Comanda } from '../types';
 import { buildWhatsAppReminderUrl, formatPortalText } from '../utils/helpers';
+import { playAppointmentScheduledSound, playSubscriptionActivatedSound } from '../utils/soundEffects';
 
 interface CustomerPanelProps {
   users: User[];
@@ -14,9 +15,12 @@ interface CustomerPanelProps {
   plans: LoyaltyPlan[];
   appointments: Appointment[];
   subscriptions: CustomerSubscription[];
+  comandas?: Comanda[];
   currentCustomer: User;
   parameters: SystemParameters;
   npsFeedbacks?: NPSFeedback[];
+  coupons?: any[];
+  creditTransactions?: any[];
   onUpdateState: (key: string, val: any) => void;
   isGuestMode?: boolean;
   onOpenLoginModal?: () => void;
@@ -28,6 +32,7 @@ export default function CustomerPanel({
   plans,
   appointments,
   subscriptions,
+  comandas = [],
   currentCustomer,
   parameters,
   npsFeedbacks = [],
@@ -113,9 +118,9 @@ export default function CustomerPanel({
   const [serviceSearch, setServiceSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('TODOS');
 
-  // New Booking State
+  // New Booking State (supports multiple service selection)
   const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
-  const [bookingServiceId, setBookingServiceId] = useState(services[0]?.id || '');
+  const [bookingServiceIds, setBookingServiceIds] = useState<string[]>(() => services[0] ? [services[0].id] : []);
   const [bookingBarberId, setBookingBarberId] = useState(barbers[0]?.id || '');
   const [bookingDate, setBookingDate] = useState(() => {
     const today = new Date();
@@ -125,6 +130,21 @@ export default function CustomerPanel({
   });
   const [bookingTime, setBookingTime] = useState('');
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
+
+  const toggleBookingServiceId = (srvId: string) => {
+    setBookingServiceIds(prev => {
+      if (prev.includes(srvId)) {
+        if (prev.length === 1) return prev; // keep at least 1
+        return prev.filter(id => id !== srvId);
+      } else {
+        return [...prev, srvId];
+      }
+    });
+  };
+
+  const selectedBookingServices = services.filter(s => bookingServiceIds.includes(s.id));
+  const totalBookingPrice = selectedBookingServices.reduce((acc, s) => acc + s.price, 0);
+  const totalBookingDuration = selectedBookingServices.reduce((acc, s) => acc + s.durationMinutes, 0);
 
   const activeSubscription = subscriptions.find(
     s => s.customerId === currentCustomer.id && s.isActive
@@ -188,21 +208,50 @@ export default function CustomerPanel({
       }
     });
 
+    const newSubId = `sub-${Date.now()}`;
     const newSubscription: CustomerSubscription = {
-      id: `sub-${Date.now()}`,
+      id: newSubId,
       customerId: currentCustomer.id,
       planId: 'custom',
       startDate: formatDate(today),
       endDate: formatDate(end),
       servicesRemaining: totalQuantity,
-      isActive: true,
+      isActive: false, // Inativa até confirmação do pagamento no Caixa
+      status: 'PENDING_PAYMENT',
       selectedServiceIds,
       totalPriceMonthly: finalMonthlyCost,
       discountPercentage: discountPct
     };
 
+    // Gera automaticamente uma comanda pendente no Caixa para pagamento/aprovação
+    const newComanda: Comanda = {
+      id: `cmd-sub-${Date.now()}`,
+      customerId: currentCustomer.id,
+      customerName: currentCustomer.name,
+      barberId: 'SYSTEM',
+      barberName: 'Sistema / Clube VIP',
+      status: 'OPEN',
+      readyForPayment: true,
+      items: [
+        {
+          id: `item-sub-${Date.now()}`,
+          name: `Assinatura Clube VIP (${totalQuantity} serviços)`,
+          unitPrice: finalMonthlyCost,
+          quantity: 1,
+        }
+      ],
+      subtotal: finalMonthlyCost,
+      discount: discountAmount,
+      total: finalMonthlyCost,
+      createdAt: new Date().toISOString(),
+      dispatchedAt: new Date().toISOString(),
+      notes: `[ASSINATURA_PENDENTE] Ativação de Clube VIP mensal para o cliente ${currentCustomer.name} (Sub ID: ${newSubId})`
+    };
+
     onUpdateState('subscriptions', [...subscriptions, newSubscription]);
-    alert(`Parabéns! Sua assinatura mensal personalizada foi criada com sucesso!`);
+    onUpdateState('comandas', [...comandas, newComanda]);
+    playSubscriptionActivatedSound();
+    alert(`🎉 Sua assinatura personalizada foi solicitada com sucesso!\n\nUma comanda de pagamento no valor de ${formatCurrency(finalMonthlyCost)} foi enviada para o Caixa. Assim que o pagamento for registrado, seus créditos VIP serão liberados automaticamente.`);
     setSelectedServiceQuantities({});
   };
 
@@ -289,11 +338,15 @@ export default function CustomerPanel({
       return;
     }
 
-    const selectedService = services.find(s => s.id === bookingServiceId);
+    if (selectedBookingServices.length === 0) {
+      alert('Por favor, selecione pelo menos um serviço para agendar.');
+      return;
+    }
+
     const selectedBarber = barbers.find(b => b.id === bookingBarberId);
 
-    if (!selectedService || !selectedBarber) {
-      alert('Por favor, selecione um profissional e serviço válidos.');
+    if (!selectedBarber) {
+      alert('Por favor, selecione um profissional válido.');
       return;
     }
 
@@ -307,23 +360,27 @@ export default function CustomerPanel({
       return;
     }
 
+    const primaryService = selectedBookingServices[0];
+    const combinedServiceName = selectedBookingServices.map(s => s.name).join(' + ');
+    const combinedPrice = totalBookingPrice;
+
     let isSub = false;
     if (useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0) {
       // Validate specific services included in customer's package
       if (activeSubscription.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0) {
-        const totalAllowedForService = activeSubscription.selectedServiceIds.filter(id => id === selectedService.id).length;
+        const totalAllowedForService = activeSubscription.selectedServiceIds.filter(id => id === primaryService.id).length;
         const usedCountForService = myAppointments.filter(
-          a => a.isSubscriptionUse && a.subscriptionId === activeSubscription.id && a.serviceId === selectedService.id && a.status !== 'CANCELLED'
+          a => a.isSubscriptionUse && a.subscriptionId === activeSubscription.id && a.serviceId === primaryService.id && a.status !== 'CANCELLED'
         ).length;
         const remForService = totalAllowedForService - usedCountForService;
 
         if (totalAllowedForService === 0) {
-          alert(`O serviço "${selectedService.name}" não faz parte do seu pacote de assinatura VIP. Desmarque a opção "Agendar via Assinatura" para agendar com pagamento avulso.`);
+          alert(`O serviço "${primaryService.name}" não faz parte do seu pacote de assinatura VIP. Desmarque a opção "Agendar via Assinatura" para agendar com pagamento avulso.`);
           return;
         }
 
         if (remForService <= 0) {
-          alert(`Você já utilizou todas as ${totalAllowedForService} cotas do serviço "${selectedService.name}" do seu pacote este mês.`);
+          alert(`Você já utilizou todas as ${totalAllowedForService} cotas do serviço "${primaryService.name}" do seu pacote este mês.`);
           return;
         }
       }
@@ -337,20 +394,22 @@ export default function CustomerPanel({
       customerPhone: currentCustomer.phone,
       barberId: selectedBarber.id,
       barberName: selectedBarber.name,
-      serviceId: selectedService.id,
-      serviceName: selectedService.name,
-      servicePrice: selectedService.price,
+      serviceId: primaryService.id,
+      serviceName: combinedServiceName,
+      servicePrice: combinedPrice,
       date: bookingDate,
       time: bookingTime,
       status: 'SCHEDULED',
+      createdBy: currentCustomer.name || 'Cliente (Portal Online)',
       isSubscriptionUse: isSub,
-      subscriptionId: isSub ? activeSubscription.id : undefined,
+      subscriptionId: isSub ? activeSubscription?.id : undefined,
       notes: isSub
-        ? `[ASSINATURA] Agendamento do Clube VIP - ${selectedService.name}`
-        : undefined
+        ? `[ASSINATURA] Agendamento do Clube VIP - ${combinedServiceName}`
+        : (selectedBookingServices.length > 1 ? `[MÚLTIPLOS SERVIÇOS]: ${combinedServiceName} (Duração est.: ${totalBookingDuration} min)` : undefined)
     };
 
     onUpdateState('appointments', [...appointments, newAppointment]);
+    playAppointmentScheduledSound();
 
     if (isSub && activeSubscription) {
       const updatedSubscriptions = subscriptions.map(s => {
@@ -364,9 +423,9 @@ export default function CustomerPanel({
         return s;
       });
       onUpdateState('subscriptions', updatedSubscriptions);
-      alert(`Agendamento do serviço "${selectedService.name}" efetuado com sucesso via Assinatura VIP na cadeira de ${selectedBarber.name}!`);
+      alert(`Agendamento de "${combinedServiceName}" efetuado com sucesso via Assinatura VIP na cadeira de ${selectedBarber.name}!`);
     } else {
-      alert(`Seu agendamento foi efetuado com sucesso na cadeira de ${selectedBarber.name}!`);
+      alert(`Seu agendamento de "${combinedServiceName}" foi efetuado com sucesso na cadeira de ${selectedBarber.name}!`);
     }
     setBookingTime('');
     setBookingStep(1);
@@ -914,16 +973,16 @@ export default function CustomerPanel({
             <button
               type="button"
               onClick={() => {
-                if (bookingServiceId) {
+                if (bookingServiceIds.length > 0) {
                   setBookingStep(2);
                   document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              disabled={!bookingServiceId}
+              disabled={bookingServiceIds.length === 0}
               className={`flex-1 py-2.5 px-2 sm:px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                 bookingStep === 2
                   ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
-                  : bookingServiceId
+                  : bookingServiceIds.length > 0
                   ? isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
               }`}
@@ -937,16 +996,16 @@ export default function CustomerPanel({
             <button
               type="button"
               onClick={() => {
-                if (bookingServiceId && bookingBarberId) {
+                if (bookingServiceIds.length > 0 && bookingBarberId) {
                   setBookingStep(3);
                   document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              disabled={!bookingServiceId || !bookingBarberId}
+              disabled={bookingServiceIds.length === 0 || !bookingBarberId}
               className={`flex-1 py-2.5 px-2 sm:px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                 bookingStep === 3
                   ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
-                  : bookingServiceId && bookingBarberId
+                  : bookingServiceIds.length > 0 && bookingBarberId
                   ? isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
               }`}
@@ -1020,23 +1079,22 @@ export default function CustomerPanel({
                     ).length;
                     const remInPkg = Math.max(0, totalInPkg - usedInPkg);
                     const hasPkgServices = activeSubscription?.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0;
-                    const isSelected = bookingServiceId === s.id;
+                    const isSelected = bookingServiceIds.includes(s.id);
 
                     return (
                       <label
                         key={s.id}
                         className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
                           isSelected
-                            ? isDarkMode ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm' : 'bg-amber-50/90 border-amber-500 text-slate-900 shadow-sm'
+                            ? isDarkMode ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm ring-1 ring-amber-500' : 'bg-amber-50/90 border-amber-500 text-slate-900 shadow-sm ring-1 ring-amber-500'
                             : isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-200 hover:bg-slate-800' : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
                         <input
-                          type="radio"
-                          name="serviceRadio"
+                          type="checkbox"
                           checked={isSelected}
-                          onChange={() => setBookingServiceId(s.id)}
-                          className="mt-1 accent-amber-500 cursor-pointer"
+                          onChange={() => toggleBookingServiceId(s.id)}
+                          className="mt-1 w-4 h-4 rounded accent-amber-500 cursor-pointer"
                         />
                         <div className="text-left select-none flex-1">
                           <div className="flex justify-between items-start gap-2">
@@ -1090,17 +1148,27 @@ export default function CustomerPanel({
                 )}
               </div>
 
-              {/* Action Button Step 1 */}
-              <div className="pt-4 border-t border-slate-200/60 dark:border-slate-800 flex justify-end">
+              {/* Action Button Step 1 & Multi-service selection summary */}
+              <div className="pt-4 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="text-xs font-mono text-left w-full sm:w-auto">
+                  <span className="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Serviços Selecionados ({bookingServiceIds.length}):</span>
+                  <span className="font-extrabold text-amber-500">
+                    {selectedBookingServices.map(s => s.name).join(', ') || 'Nenhum selecionado'}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 ml-2">
+                    • Total: {formatCurrency(totalBookingPrice)} ({totalBookingDuration} min)
+                  </span>
+                </div>
+
                 <button
                   type="button"
-                  disabled={!bookingServiceId}
+                  disabled={bookingServiceIds.length === 0}
                   onClick={() => {
                     setBookingStep(2);
                     document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
                   }}
                   className={`w-full sm:w-auto px-6 py-3 rounded-xl font-mono font-extrabold text-xs uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 ${
-                    bookingServiceId
+                    bookingServiceIds.length > 0
                       ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md scale-[1.01]'
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                   }`}
@@ -1127,27 +1195,27 @@ export default function CustomerPanel({
                 </div>
               </div>
 
-              {/* Selected Service Summary */}
-              {(() => {
-                const selectedService = services.find(s => s.id === bookingServiceId);
-                return (
-                  <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-mono font-bold ${
-                    isDarkMode ? 'bg-amber-950/30 border-amber-800/60 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-950'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <Scissors className="w-4 h-4 text-amber-500" />
-                      <span>Serviço Selecionado: <strong>{selectedService?.name}</strong> ({formatCurrency(selectedService?.price || 0)})</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setBookingStep(1)}
-                      className="text-[10px] underline hover:text-amber-500 cursor-pointer"
-                    >
-                      Alterar
-                    </button>
-                  </div>
-                );
-              })()}
+              {/* Selected Services Summary */}
+              <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs font-mono font-bold ${
+                isDarkMode ? 'bg-amber-950/30 border-amber-800/60 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-950'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Scissors className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>
+                    Serviços ({selectedBookingServices.length}): <strong>{selectedBookingServices.map(s => s.name).join(' + ')}</strong> • Total: {formatCurrency(totalBookingPrice)} ({totalBookingDuration} min)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingStep(1);
+                    document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="text-[10px] underline hover:text-amber-500 cursor-pointer shrink-0"
+                >
+                  Alterar Serviços
+                </button>
+              </div>
 
               {/* Barbers Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -1156,7 +1224,7 @@ export default function CustomerPanel({
                     key={b.id}
                     className={`flex flex-col p-4 rounded-xl border cursor-pointer transition ${
                       bookingBarberId === b.id
-                        ? isDarkMode ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm' : 'bg-amber-50/90 border-amber-500 text-slate-900 shadow-sm'
+                        ? isDarkMode ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm ring-1 ring-amber-500' : 'bg-amber-50/90 border-amber-500 text-slate-900 shadow-sm ring-1 ring-amber-500'
                         : isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-200 hover:bg-slate-800' : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
@@ -1243,19 +1311,18 @@ export default function CustomerPanel({
 
               {/* Summary of Steps 1 & 2 */}
               {(() => {
-                const selectedService = services.find(s => s.id === bookingServiceId);
                 const selectedBarber = barbers.find(b => b.id === bookingBarberId);
                 return (
                   <div className={`p-3.5 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono ${
                     isDarkMode ? 'bg-amber-950/30 border-amber-800/60 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-950'
                   }`}>
                     <div className="flex items-center justify-between">
-                      <span>✂️ Serviço: <strong>{selectedService?.name}</strong> ({formatCurrency(selectedService?.price || 0)})</span>
-                      <button type="button" onClick={() => setBookingStep(1)} className="text-[10px] underline hover:text-amber-500 cursor-pointer">Alterar</button>
+                      <span>✂️ Serviços: <strong>{selectedBookingServices.map(s => s.name).join(' + ')}</strong> ({formatCurrency(totalBookingPrice)})</span>
+                      <button type="button" onClick={() => { setBookingStep(1); document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-[10px] underline hover:text-amber-500 cursor-pointer">Alterar</button>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>🧔 Profissional: <strong>{selectedBarber?.name}</strong></span>
-                      <button type="button" onClick={() => setBookingStep(2)} className="text-[10px] underline hover:text-amber-500 cursor-pointer">Alterar</button>
+                      <button type="button" onClick={() => { setBookingStep(2); document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-[10px] underline hover:text-amber-500 cursor-pointer">Alterar</button>
                     </div>
                   </div>
                 );
@@ -1421,7 +1488,6 @@ export default function CustomerPanel({
 
                   {/* Booking Confirmation Box */}
                   {(() => {
-                    const selectedService = services.find(s => s.id === bookingServiceId);
                     const selectedBarber = barbers.find(b => b.id === bookingBarberId);
                     return (
                       <div className={`p-4 rounded-2xl border space-y-2 text-xs font-mono ${
@@ -1429,12 +1495,12 @@ export default function CustomerPanel({
                       }`}>
                         <h4 className="font-bold uppercase text-[11px] text-amber-600 dark:text-amber-400 border-b border-amber-200/50 dark:border-slate-700 pb-1">Resumo do Agendamento:</h4>
                         <div className="space-y-1 text-[11px]">
-                          <p>✂️ <strong>Serviço:</strong> {selectedService?.name || '-'}</p>
+                          <p>✂️ <strong>Serviços:</strong> {selectedBookingServices.map(s => s.name).join(' + ') || '-'}</p>
                           <p>🧔 <strong>Profissional:</strong> {selectedBarber?.name || '-'}</p>
                           <p>📅 <strong>Data:</strong> {bookingDate ? bookingDate.split('-').reverse().join('/') : '-'}</p>
                           <p>⏰ <strong>Horário:</strong> {bookingTime || 'Não selecionado'}</p>
                           <p className="pt-1 text-xs font-extrabold text-amber-700 dark:text-amber-300">
-                            💰 Valor: {selectedService ? formatCurrency(selectedService.price) : '-'}
+                            💰 Valor Total: {formatCurrency(totalBookingPrice)}
                             {useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0 ? ' (Cobrado no Pacote VIP)' : ''}
                           </p>
                         </div>
@@ -1925,34 +1991,65 @@ export default function CustomerPanel({
         </div>
 
         {/* REDES SOCIAIS */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className={`text-xs font-mono font-bold uppercase mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Redes Sociais:</span>
-          {parameters.whatsappUrl && (
-            <a href={parameters.whatsappUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800 hover:bg-emerald-900/60' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-            }`}>
-              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-            </a>
-          )}
-          {parameters.instagramUrl && (
-            <a href={parameters.instagramUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-pink-950/60 text-pink-300 border-pink-800 hover:bg-pink-900/60' : 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100'
-            }`}>
-              <Instagram className="w-3.5 h-3.5" /> Instagram
-            </a>
-          )}
-          {parameters.facebookUrl && (
-            <a href={parameters.facebookUrl} target="_blank" rel="noopener noreferrer" className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition border ${
-              isDarkMode ? 'bg-blue-950/60 text-blue-300 border-blue-800 hover:bg-blue-900/60' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-            }`}>
-              <Facebook className="w-3.5 h-3.5" /> Facebook
-            </a>
-          )}
-          {parameters.tiktokUrl && (
-            <a href={parameters.tiktokUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
-              🎵 TikTok
-            </a>
-          )}
+        <div className="pt-1">
+          <span className={`text-xs font-mono font-bold uppercase block mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Redes Sociais & Contato:</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {parameters.whatsappUrl && (
+              <a
+                href={parameters.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`h-10 px-3 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-2 transition border ${
+                  isDarkMode
+                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800 hover:bg-emerald-900/60'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                <MessageCircle className="w-4 h-4 shrink-0" />
+                <span>WhatsApp</span>
+              </a>
+            )}
+            {parameters.instagramUrl && (
+              <a
+                href={parameters.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`h-10 px-3 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-2 transition border ${
+                  isDarkMode
+                    ? 'bg-pink-950/60 text-pink-300 border-pink-800 hover:bg-pink-900/60'
+                    : 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100'
+                }`}
+              >
+                <Instagram className="w-4 h-4 shrink-0" />
+                <span>Instagram</span>
+              </a>
+            )}
+            {parameters.facebookUrl && (
+              <a
+                href={parameters.facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`h-10 px-3 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-2 transition border ${
+                  isDarkMode
+                    ? 'bg-blue-950/60 text-blue-300 border-blue-800 hover:bg-blue-900/60'
+                    : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <Facebook className="w-4 h-4 shrink-0" />
+                <span>Facebook</span>
+              </a>
+            )}
+            {parameters.tiktokUrl && (
+              <a
+                href={parameters.tiktokUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-10 px-3 bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-2 transition"
+              >
+                <span>🎵 TikTok</span>
+              </a>
+            )}
+          </div>
         </div>
       </div>
 

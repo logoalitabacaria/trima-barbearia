@@ -88,6 +88,70 @@
         "paymentMethod": { "type": "string" }
       },
       "required": ["id", "customerId", "barberId", "status", "items", "total"]
+    },
+    "OperationalScript": {
+      "title": "OperationalScript",
+      "description": "Customer service standard script or procedural guidance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "content": { "type": "string" },
+        "steps": { "type": "array" },
+        "tips": { "type": "string" },
+        "tags": { "type": "array" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "title", "category"]
+    },
+    "DiscountCoupon": {
+      "title": "DiscountCoupon",
+      "description": "Promotional coupons for cashier and booking discounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "type": { "type": "string" },
+        "value": { "type": "number" },
+        "minOrderValue": { "type": "number" },
+        "maxDiscount": { "type": "number" },
+        "usageLimit": { "type": "number" },
+        "usageCount": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "code", "type", "value"]
+    },
+    "CustomerCreditTransaction": {
+      "title": "CustomerCreditTransaction",
+      "description": "Prepaid balance or cashback movements for customers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "customerId", "type", "amount", "createdAt"]
+    },
+    "BarberPayout": {
+      "title": "BarberPayout",
+      "description": "Recorded commission settlement payments to barbers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "barberId": { "type": "string" },
+        "barberName": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "periodStart": { "type": "string" },
+        "periodEnd": { "type": "string" },
+        "paidAt": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "barberId", "amount", "paidAt"]
     }
   },
   "firestore": {
@@ -110,6 +174,22 @@
     "/comandas/{comandaId}": {
       "schema": "Comanda",
       "description": "Receipts and bills for active/paid customers"
+    },
+    "/scripts/{scriptId}": {
+      "schema": "OperationalScript",
+      "description": "Service standards and operational guides"
+    },
+    "/coupons/{couponId}": {
+      "schema": "DiscountCoupon",
+      "description": "Promotional discount codes"
+    },
+    "/creditTransactions/{creditId}": {
+      "schema": "CustomerCreditTransaction",
+      "description": "Customer wallet and store credit ledger"
+    },
+    "/barberPayouts/{payoutId}": {
+      "schema": "BarberPayout",
+      "description": "Commission settlement history for barbers"
     }
   }
 }
