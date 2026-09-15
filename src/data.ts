@@ -15,6 +15,7 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   phone: "+55 11 92598-0946",
   primaryColor: "#eab308",
   backgroundColor: "#000000",
+  enableQuantitySubscriptionDiscount: true,
   subDiscount2: 0.05,
   subDiscount3to4: 0.12,
   subDiscount5to6: 0.20,
@@ -316,7 +317,41 @@ export const INITIAL_SERVICES: Service[] = [
 
 export const INITIAL_PRODUCTS: Product[] = [];
 
-export const INITIAL_PLANS: LoyaltyPlan[] = [];
+export const INITIAL_PLANS: LoyaltyPlan[] = [
+  {
+    id: 'pln-unlimited-hair',
+    name: 'Clube Ilimitado Corte Masculino',
+    priceMonthly: 119.90,
+    description: 'Cortes de cabelo ilimitados no mês com repasse justo por atendimento ao barbeiro.',
+    servicesIncludedCount: 999,
+    currentCommissionRate: 35,
+    isUnlimited: true,
+    includedServiceIds: ['srv-1', 'srv-2', 'srv-4'],
+    barberPayoutRate: 35,
+    rules: [
+      'Cortes de cabelo ilimitados no mês',
+      'Válido para corte social, degradê e máquina',
+      'Repasse proporcional garantido ao profissional',
+      'Uso pessoal e intransferível'
+    ]
+  },
+  {
+    id: 'pln-vip-full',
+    name: 'Clube VIP Total (Cabelo & Barba)',
+    priceMonthly: 189.90,
+    description: 'Acesso ilimitado a cortes e cuidados de barba com agendamento prioritário.',
+    servicesIncludedCount: 999,
+    currentCommissionRate: 40,
+    isUnlimited: true,
+    includedServiceIds: ['srv-1', 'srv-2', 'srv-5', 'srv-7', 'srv-9'],
+    barberPayoutRate: 40,
+    rules: [
+      'Cortes e Barba ilimitados durante o mês vigente',
+      'Desconto exclusivo de 10% em produtos da barbearia',
+      'Repasse proporcional automático ao barbeiro por visita'
+    ]
+  }
+];
 
 export const INITIAL_SUBSCRIPTIONS: CustomerSubscription[] = [];
 

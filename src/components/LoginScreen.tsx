@@ -186,44 +186,48 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-black text-white flex flex-col justify-center items-center py-6 sm:py-12 px-3 sm:px-6 lg:px-8 relative selection:bg-yellow-500 selection:text-black">
+      {/* Top Visitor Nav Button */}
       {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 left-4 sm:top-6 sm:left-6 px-3.5 py-2 bg-zinc-900 border border-zinc-800 text-yellow-500 hover:bg-zinc-800 text-xs font-mono font-bold rounded-xl cursor-pointer flex items-center gap-2 shadow-sm transition"
-        >
-          ← Continuar Navegando (Modo Visitante)
-        </button>
+        <div className="w-full max-w-md flex items-center justify-start mb-4 px-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-yellow-500 text-xs font-mono font-bold rounded-xl cursor-pointer flex items-center gap-2 shadow-sm transition"
+          >
+            <span className="sm:hidden">← Modo Visitante</span>
+            <span className="hidden sm:inline">← Continuar Navegando (Modo Visitante)</span>
+          </button>
+        </div>
       )}
 
       {/* Branded Title Section */}
-      <div className="text-center mb-8 max-w-md flex flex-col items-center gap-3">
+      <div className="text-center mb-6 sm:mb-8 max-w-md w-full flex flex-col items-center gap-2 sm:gap-3 px-2">
         {parameters?.logoUrl && (
-          <img src={parameters.logoUrl} alt="Logo" className="h-20 w-20 object-contain rounded-2xl mb-2 border border-zinc-800" referrerPolicy="no-referrer" />
+          <img src={parameters.logoUrl} alt="Logo" className="h-16 w-16 sm:h-20 sm:w-20 object-contain rounded-2xl mb-1 border border-zinc-800" referrerPolicy="no-referrer" />
         )}
-        <h1 className="text-4xl font-extrabold tracking-tight text-yellow-500 font-sans uppercase">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-yellow-500 font-sans uppercase break-words">
           {parameters?.shopName ? (
             <span>{parameters.shopName}</span>
           ) : (
             <>Trima <span className="text-white">Studio</span></>
           )}
         </h1>
-        <p className="mt-2 text-xs text-zinc-400 uppercase tracking-widest font-mono">
+        <p className="mt-1 sm:mt-2 text-xs text-zinc-400 uppercase tracking-widest font-mono">
           Estilo, Cerveja Gelada & Tabacaria
         </p>
       </div>
 
       <div className="w-full max-w-md bg-[#0F0F11] border-2 border-yellow-500/35 rounded-2xl overflow-hidden shadow-2xl shadow-yellow-500/5">
-        <div className="px-6 py-8">
+        <div className="px-4 sm:px-6 py-6 sm:py-8">
           <div className="flex border-b border-zinc-800 mb-6">
             <button
               onClick={() => {
                 setIsRegisterMode(false);
                 setError('');
               }}
-              className={`flex-1 pb-3 text-sm font-semibold tracking-wider uppercase font-mono ${
-                !isRegisterMode ? 'text-yellow-500 border-b-2 border-yellow-500' : 'text-zinc-500'
+              className={`flex-1 pb-3 text-xs sm:text-sm font-semibold tracking-wider uppercase font-mono transition cursor-pointer text-center px-1 ${
+                !isRegisterMode ? 'text-yellow-500 border-b-2 border-yellow-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               Entrar
@@ -233,11 +237,12 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                 setIsRegisterMode(true);
                 setError('');
               }}
-              className={`flex-1 pb-3 text-sm font-semibold tracking-wider uppercase font-mono ${
-                isRegisterMode ? 'text-yellow-500 border-b-2 border-yellow-500' : 'text-zinc-500'
+              className={`flex-1 pb-3 text-xs sm:text-sm font-semibold tracking-wider uppercase font-mono transition cursor-pointer text-center px-1 ${
+                isRegisterMode ? 'text-yellow-500 border-b-2 border-yellow-500 font-bold' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              Agendar Online (Cadastrar)
+              <span className="sm:hidden">Novo Cadastro</span>
+              <span className="hidden sm:inline">Agendar Online (Cadastrar)</span>
             </button>
           </div>
 
@@ -267,7 +272,7 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                   value={login}
                   onChange={(e) => setLogin(e.target.value)}
                   placeholder="Ex: 123.456.789-00 ou seu e-mail"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                  className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                 />
               </div>
 
@@ -280,7 +285,7 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                  className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                 />
               </div>
 
@@ -304,12 +309,12 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
                   placeholder="Ex: João Silva"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                  className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3 sm:px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
                     WhatsApp / Celular *
                   </label>
@@ -319,10 +324,10 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                     value={regPhone}
                     onChange={(e) => setRegPhone(e.target.value)}
                     placeholder="Ex: (11) 98765-4321"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                    className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3 sm:px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
                     E-mail (para login)
                   </label>
@@ -331,13 +336,13 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     placeholder="seu.email@exemplo.com"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                    className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3 sm:px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
                     CPF <span className="text-zinc-500 font-normal lowercase">(opcional)</span>
                   </label>
@@ -347,10 +352,10 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                     onChange={handleCpfChange}
                     placeholder="000.000.000-00 (opcional)"
                     maxLength={14}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                    className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3 sm:px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] tracking-wider font-mono text-zinc-400 block uppercase mb-1">
                     Senha de Acesso *
                   </label>
@@ -360,7 +365,7 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     placeholder="Sua senha secreta"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
+                    className="w-full min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3 sm:px-4 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500 transition"
                   />
                 </div>
               </div>
@@ -375,7 +380,7 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
                   value={regReferralCode}
                   onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
                   placeholder="Ex: TRIMA-1234 ou código do seu amigo"
-                  className="w-full bg-zinc-950 border border-amber-500/40 rounded-xl px-4 py-2.5 text-sm font-mono text-white placeholder:text-zinc-500 focus:outline-none focus:border-yellow-500 transition uppercase"
+                  className="w-full min-w-0 bg-zinc-950 border border-amber-500/40 rounded-xl px-3 sm:px-4 py-2.5 text-sm font-mono text-white placeholder:text-zinc-500 focus:outline-none focus:border-yellow-500 transition uppercase"
                 />
               </div>
 

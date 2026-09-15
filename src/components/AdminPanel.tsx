@@ -16,6 +16,13 @@ import { buildWhatsAppReminderUrl, calculateProductABC } from '../utils/helpers'
 import { exportDREReportCSV, exportComandasDetailedCSV, exportDSRClosingCSV } from '../utils/csvExport';
 import { getBarberLeaderboard, calculateBarberGoalProgress, DEFAULT_GOAL_TIERS } from '../utils/goals';
 import { ErrorBoundary } from './ErrorBoundary';
+import SettingsTabs from './settings/SettingsTabs';
+import SettingsSubscriptions from './settings/SettingsSubscriptions';
+import SettingsPromotions from './settings/SettingsPromotions';
+import SettingsGeneral from './settings/SettingsGeneral';
+import SettingsLoyalty from './settings/SettingsLoyalty';
+import SettingsPortal from './settings/SettingsPortal';
+import SettingsSecurity from './settings/SettingsSecurity';
 
 interface AdminPanelProps {
   currentUser?: User;
@@ -159,6 +166,16 @@ export default function AdminPanel({
   const [plnCommission, setPlnCommission] = useState('30');
   const [plnDescription, setPlnDescription] = useState('');
   const [plnRulesText, setPlnRulesText] = useState('');
+  const [plnIsUnlimited, setPlnIsUnlimited] = useState(false);
+  const [plnIncludedServiceIds, setPlnIncludedServiceIds] = useState<string[]>([]);
+  const [plnBarberPayoutRate, setPlnBarberPayoutRate] = useState('35');
+
+  // Service Catalog Filter states
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState<string>('TODAS');
+  const [serviceSearchTerm, setServiceSearchTerm] = useState<string>('');
+
+  // Settings Categorization state
+  const [activeSettingsCategory, setActiveSettingsCategory] = useState<'promocoes' | 'assinaturas' | 'geral' | 'fidelidade' | 'portal' | 'dados'>('promocoes');
 
   // 4. User Form (Acessos)
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -247,6 +264,67 @@ export default function AdminPanel({
   // Database wiping states
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetStatus, setResetStatus] = useState<'idle' | 'resetting' | 'done'>('idle');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetErrorMessage, setResetErrorMessage] = useState('');
+
+  const handleResetDatabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetConfirmPassword !== 'admin123') {
+      setResetErrorMessage('Senha de administrador incorreta.');
+      return;
+    }
+    if (!onResetDatabase) return;
+    try {
+      setResetStatus('resetting');
+      setResetErrorMessage('');
+      await onResetDatabase();
+      setResetStatus('done');
+      setShowResetConfirm(false);
+      setResetConfirmPassword('');
+    } catch (err: any) {
+      setResetStatus('idle');
+      setResetErrorMessage(err?.message || 'Erro ao zerar banco de dados.');
+    }
+  };
+
+  const handleMoveBanner = (bannerId: string, direction: 'up' | 'down') => {
+    const banners = [...(parameters.customerPortalBanners || [])];
+    const index = banners.findIndex(b => b.id === bannerId);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= banners.length) return;
+    const [moved] = banners.splice(index, 1);
+    banners.splice(targetIndex, 0, moved);
+    handleUpdateParameter('customerPortalBanners', banners);
+  };
+
+  const handleOpenNewBanner = () => {
+    setEditingBannerId(null);
+    setBannerTitle('');
+    setBannerSubtitle('');
+    setBannerImageUrl('');
+    setBannerMobileImageUrl('');
+    setBannerDisplayMode('CAROUSEL');
+    setBannerTargetDevice('ALL');
+    setBannerLinkUrl('');
+    setBannerBadgeText('');
+    setBannerIsActive(true);
+    setShowBannerModal(true);
+  };
+
+  const handleEditBanner = (banner: CustomerBanner) => {
+    setEditingBannerId(banner.id);
+    setBannerTitle(banner.title);
+    setBannerSubtitle(banner.subtitle || '');
+    setBannerImageUrl(banner.imageUrl || '');
+    setBannerMobileImageUrl(banner.mobileImageUrl || '');
+    setBannerDisplayMode(banner.displayMode || 'CAROUSEL');
+    setBannerTargetDevice(banner.targetDevice || 'ALL');
+    setBannerLinkUrl(banner.linkUrl || '');
+    setBannerBadgeText(banner.badgeText || '');
+    setBannerIsActive(banner.isActive);
+    setShowBannerModal(true);
+  };
 
   // RBAC & Bulk Register States
   const [expandedUserPermissionsId, setExpandedUserPermissionsId] = useState<string | null>(null);
@@ -591,10 +669,13 @@ export default function AdminPanel({
       id: editingPlanId || `pln-${Date.now()}`,
       name: plnName,
       priceMonthly: parseFloat(plnPrice),
-      servicesIncludedCount: parseInt(plnServices) || 4,
-      currentCommissionRate: parseFloat(plnCommission) / 100 || 0.30,
+      servicesIncludedCount: plnIsUnlimited ? 999 : (parseInt(plnServices) || 4),
+      currentCommissionRate: plnIsUnlimited ? (parseFloat(plnBarberPayoutRate) / 100 || 0.35) : (parseFloat(plnCommission) / 100 || 0.30),
       description: plnDescription,
-      rules: rulesArray
+      rules: rulesArray,
+      isUnlimited: plnIsUnlimited,
+      includedServiceIds: plnIsUnlimited ? plnIncludedServiceIds : undefined,
+      barberPayoutRate: plnIsUnlimited ? (parseFloat(plnBarberPayoutRate) || 35) : undefined
     };
 
     let updatedList;
@@ -613,6 +694,9 @@ export default function AdminPanel({
     setPlnCommission('30');
     setPlnDescription('');
     setPlnRulesText('');
+    setPlnIsUnlimited(false);
+    setPlnIncludedServiceIds([]);
+    setPlnBarberPayoutRate('35');
   };
 
   const handleDeletePlan = (id: string) => {
@@ -625,10 +709,15 @@ export default function AdminPanel({
     setEditingPlanId(p.id);
     setPlnName(p.name);
     setPlnPrice(p.priceMonthly.toString());
-    setPlnServices(p.servicesIncludedCount.toString());
-    setPlnCommission(Math.round(p.currentCommissionRate * 100).toString());
+    setPlnServices((p.servicesIncludedCount || 4).toString());
+    const commPct = p.currentCommissionRate > 1 ? p.currentCommissionRate : Math.round((p.currentCommissionRate || 0.30) * 100);
+    setPlnCommission(commPct.toString());
     setPlnDescription(p.description || '');
-    setPlnRulesText(p.rules.join('\n'));
+    setPlnRulesText(p.rules ? p.rules.join('\n') : '');
+    setPlnIsUnlimited(!!p.isUnlimited);
+    setPlnIncludedServiceIds(p.includedServiceIds || []);
+    const payoutPct = p.barberPayoutRate !== undefined ? p.barberPayoutRate : (p.currentCommissionRate > 1 ? p.currentCommissionRate : Math.round((p.currentCommissionRate || 0.35) * 100));
+    setPlnBarberPayoutRate(payoutPct.toString());
   };
 
   // OPERATIONAL SCRIPTS ACTIONS
@@ -1296,7 +1385,7 @@ export default function AdminPanel({
   const totalNetShopKeep = totalSalesToday - totalCommissionToday;
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-full space-y-6 overflow-x-hidden">
       {/* BANCO DE DADOS STATUS INDICATOR */}
       <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 text-left">
         <div className="flex items-center gap-3">
@@ -1671,18 +1760,91 @@ export default function AdminPanel({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
           {/* Left Lists Section */}
           <div className="lg:col-span-8 space-y-6">
-            {/* SERVICES IN CATALOGU/S */}
-            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl">
-              <div className="flex justify-between items-center pb-3 border-b border-zinc-850 mb-3">
-                <h4 className="text-xs font-bold font-mono uppercase text-yellow-500">Gestão de Serviços do Catálogo</h4>
-                <span className="text-[10px] text-zinc-400 font-mono uppercase bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
-                  {services.length} Serviços
+            {/* SERVICES IN CATALOGUE */}
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-850">
+                <div>
+                  <h4 className="text-xs font-bold font-mono uppercase text-yellow-500">Gestão de Serviços do Catálogo</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">Filtre serviços por categoria ou busque pelo nome para gerenciar e editar.</p>
+                </div>
+                <span className="text-[10px] text-zinc-400 font-mono uppercase bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 self-start sm:self-auto">
+                  {services.length} Serviços Cadastrados
                 </span>
               </div>
+
+              {/* Filtro por Categoria e Busca */}
+              <div className="space-y-2.5">
+                <div className="relative w-full">
+                  <input
+                    type="text"
+                    value={serviceSearchTerm}
+                    onChange={(e) => setServiceSearchTerm(e.target.value)}
+                    placeholder="🔍 Buscar serviço por nome..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-yellow-500 font-mono"
+                  />
+                  {serviceSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtros de Categoria em Pills */}
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[10px] text-zinc-500 font-mono uppercase mr-1">Filtrar:</span>
+                  <button
+                    type="button"
+                    onClick={() => setServiceCategoryFilter('TODAS')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                      serviceCategoryFilter === 'TODAS'
+                        ? 'bg-yellow-500 text-black font-extrabold shadow-sm'
+                        : 'bg-zinc-950 text-zinc-400 hover:bg-zinc-900 hover:text-white border border-zinc-850'
+                    }`}
+                  >
+                    <span>Todas</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      serviceCategoryFilter === 'TODAS' ? 'bg-black/25 text-black' : 'bg-zinc-800 text-zinc-400'
+                    }`}>
+                      {services.length}
+                    </span>
+                  </button>
+
+                  {(categories && categories.length > 0 ? categories : ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']).map(cat => {
+                    const count = services.filter(s => s.category === cat).length;
+                    const isSelected = serviceCategoryFilter === cat;
+                    const catLabel = cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamento' : cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setServiceCategoryFilter(cat)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-yellow-500 text-black font-extrabold shadow-sm'
+                            : 'bg-zinc-950 text-zinc-400 hover:bg-zinc-900 hover:text-white border border-zinc-850'
+                        }`}
+                      >
+                        <span>{catLabel}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isSelected ? 'bg-black/25 text-black' : 'bg-zinc-800 text-zinc-400'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tabela de Serviços */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-400">
+                    <tr className="border-b border-zinc-800 text-zinc-400 font-mono">
                       <th className="pb-2 font-medium">Nome</th>
                       <th className="pb-2 font-medium">Preço Base</th>
                       <th className="pb-2 font-medium">Duração</th>
@@ -1691,36 +1853,53 @@ export default function AdminPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-850">
-                    {services.map(s => (
-                      <tr key={s.id} className="hover:bg-zinc-900/10">
-                        <td className="py-2.5 font-bold text-white">{s.name}</td>
-                        <td className="py-2.5 text-yellow-500 font-mono font-semibold">{formatCurrency(s.price)}</td>
-                        <td className="py-2.5 text-zinc-400 font-mono">{s.durationMinutes} min</td>
-                        <td className="py-2.5">
-                          <span className="text-[9px] uppercase bg-zinc-900/85 px-2 py-0.5 border border-zinc-800 font-mono rounded">
-                            {s.category}
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleEditServiceSelect(s)}
-                              className="p-1 text-zinc-400 hover:text-white"
-                              title="Editar"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteService(s.id)}
-                              className="p-1 text-zinc-500 hover:text-red-400"
-                              title="Excluir"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                    {services
+                      .filter(s => {
+                        const matchesCat = serviceCategoryFilter === 'TODAS' || s.category === serviceCategoryFilter;
+                        const matchesQuery = !serviceSearchTerm || s.name.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+                        return matchesCat && matchesQuery;
+                      })
+                      .map(s => (
+                        <tr key={s.id} className="hover:bg-zinc-900/10">
+                          <td className="py-2.5 font-bold text-white">{s.name}</td>
+                          <td className="py-2.5 text-yellow-500 font-mono font-semibold">{formatCurrency(s.price)}</td>
+                          <td className="py-2.5 text-zinc-400 font-mono">{s.durationMinutes} min</td>
+                          <td className="py-2.5">
+                            <span className="text-[9px] uppercase bg-zinc-900/85 px-2 py-0.5 border border-zinc-800 font-mono rounded">
+                              {s.category}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleEditServiceSelect(s)}
+                                className="p-1 text-zinc-400 hover:text-white"
+                                title="Editar"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteService(s.id)}
+                                className="p-1 text-zinc-500 hover:text-red-400"
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    {services.filter(s => {
+                      const matchesCat = serviceCategoryFilter === 'TODAS' || s.category === serviceCategoryFilter;
+                      const matchesQuery = !serviceSearchTerm || s.name.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+                      return matchesCat && matchesQuery;
+                    }).length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-zinc-500 font-mono text-xs">
+                          Nenhum serviço encontrado para o filtro "{serviceCategoryFilter}"{serviceSearchTerm ? ` e busca "${serviceSearchTerm}"` : ''}.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1803,54 +1982,128 @@ export default function AdminPanel({
             </div>
 
             {/* RECURRING PLANS LIST */}
-            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl">
-              <div className="flex justify-between items-center pb-3 border-b border-zinc-850 mb-3">
-                <h4 className="text-xs font-bold font-mono uppercase text-yellow-500">Planos de Assinatura Recorrente</h4>
+            <div className="bg-[#101012] border border-zinc-800 p-5 rounded-xl space-y-3">
+              <div className="flex justify-between items-center pb-3 border-b border-zinc-850">
+                <div>
+                  <h4 className="text-xs font-bold font-mono uppercase text-yellow-500">Planos de Assinatura Recorrente</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">Planos fixos ou com uso ilimitado de serviços específicos com repasse proporcional.</p>
+                </div>
                 <span className="text-[10px] text-zinc-400 font-mono uppercase bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
                   {plans.length} Planos Ativos
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {plans.map(p => (
-                  <div key={p.id} className="bg-zinc-950 border border-zinc-850 rounded-xl p-4 flex flex-col justify-between gap-4">
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <h5 className="font-bold text-white text-sm">{p.name}</h5>
-                        <span className="bg-yellow-500/10 text-yellow-500 font-mono px-2 py-0.5 rounded text-xs font-semibold">
-                          {formatCurrency(p.priceMonthly)}/mês
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-400 mt-1.5 leading-snug">{p.description}</p>
-                      <div className="mt-2.5 space-y-1">
-                        {p.rules.map((rule, idx) => (
-                          <div key={idx} className="text-[10px] text-zinc-500 flex items-center gap-1">
-                            <span className="text-yellow-500">•</span>
-                            <span>{rule}</span>
+                {plans.map(p => {
+                  const isUnlim = !!p.isUnlimited;
+                  const payoutRate = p.barberPayoutRate !== undefined ? p.barberPayoutRate : (p.currentCommissionRate > 1 ? p.currentCommissionRate : Math.round((p.currentCommissionRate || 0.35) * 100));
+                  const benchmarkVisits = 4;
+                  const basePerVisit = p.priceMonthly / benchmarkVisits;
+                  const payoutVal = basePerVisit * (payoutRate / 100);
+                  const incServiceNames = (p.includedServiceIds || [])
+                    .map(id => services.find(s => s.id === id)?.name)
+                    .filter(Boolean);
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`bg-zinc-950 border rounded-xl p-4 flex flex-col justify-between gap-3 relative overflow-hidden ${
+                        isUnlim ? 'border-amber-500/50 shadow-md bg-gradient-to-br from-amber-500/5 to-zinc-950' : 'border-zinc-850'
+                      }`}
+                    >
+                      {isUnlim && (
+                        <div className="absolute top-2 right-2 bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded">
+                          ⭐ USO ILIMITADO
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex justify-between items-start pr-20">
+                          <h5 className="font-bold text-white text-sm">{p.name}</h5>
+                        </div>
+                        <div className="mt-1">
+                          <span className="text-amber-400 font-mono text-base font-extrabold">
+                            {formatCurrency(p.priceMonthly)}
+                          </span>
+                          <span className="text-zinc-500 text-xs font-mono"> / mês</span>
+                        </div>
+
+                        {p.description && (
+                          <p className="text-[11px] text-zinc-400 mt-1.5 leading-snug">{p.description}</p>
+                        )}
+
+                        {/* Serviços Inclusos (Para Ilimitado) */}
+                        {isUnlim && (
+                          <div className="mt-2.5 pt-2 border-t border-zinc-900">
+                            <span className="text-[9px] text-amber-400/90 font-mono uppercase font-bold block mb-1">
+                              Serviços com Uso Ilimitado:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {incServiceNames.length > 0 ? (
+                                incServiceNames.map((srvName, idx) => (
+                                  <span key={idx} className="px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded text-[9px] font-mono">
+                                    ✓ {srvName}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-zinc-500 italic">Todos os serviços do catálogo</span>
+                              )}
+                            </div>
                           </div>
-                        ))}
+                        )}
+
+                        {p.rules && p.rules.length > 0 && (
+                          <div className="mt-2.5 space-y-0.5 pt-2 border-t border-zinc-900">
+                            {p.rules.map((rule, idx) => (
+                              <div key={idx} className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                <span className="text-yellow-500">•</span>
+                                <span>{rule}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Barbeiro Payout info */}
+                      <div className="pt-2.5 border-t border-zinc-900/80 space-y-1.5">
+                        <div className="bg-zinc-900/80 p-2 rounded-lg border border-zinc-850 text-[10px] font-mono">
+                          <div className="flex justify-between items-center text-zinc-300">
+                            <span>Repasse Barbeiro:</span>
+                            <strong className="text-yellow-400 font-bold">{payoutRate}% {isUnlim ? 'proporcional' : ''}</strong>
+                          </div>
+                          {isUnlim ? (
+                            <div className="text-[9px] text-zinc-400 mt-0.5">
+                              Lucro por corte ilimitado: <span className="text-emerald-400 font-bold">{formatCurrency(payoutVal)}</span> <span className="text-zinc-500">(R$ {basePerVisit.toFixed(2)} base)</span>
+                            </div>
+                          ) : (
+                            <div className="text-[9px] text-zinc-400 mt-0.5">
+                              Atendimentos: <strong className="text-white">{p.servicesIncludedCount}</strong>/mês
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center pt-1">
+                          <span className="text-[9px] text-zinc-500 uppercase font-mono">
+                            {isUnlim ? '∞ Atendimentos Ilimitados' : `${p.servicesIncludedCount} Visitas / mês`}
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => handleEditPlanSelect(p)}
+                              className="p-1 px-2.5 text-[10px] tracking-wider uppercase font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 hover:text-white hover:bg-zinc-800 rounded transition cursor-pointer"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDeletePlan(p.id)}
+                              className="p-1 text-zinc-500 hover:text-red-400 transition cursor-pointer"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center pt-2.5 border-t border-zinc-900">
-                      <span className="text-[9px] text-zinc-400 uppercase font-mono">
-                        Atendimentos: {p.servicesIncludedCount}/mês
-                      </span>
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => handleEditPlanSelect(p)}
-                          className="p-1 px-2 text-[10px] tracking-wider uppercase font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 hover:text-white rounded"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeletePlan(p.id)}
-                          className="p-1 text-zinc-400 hover:text-red-400"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -2114,8 +2367,13 @@ export default function AdminPanel({
 
             {/* ADD/EDIT LOYALTY SUBSCRIPTION PLAN */}
             <div className="bg-[#101012] border border-zinc-800 p-4 rounded-xl">
-              <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase border-b border-zinc-850 pb-2 mb-3">
-                {editingPlanId ? '🔄 Editar Plano' : '＋ Cadastrar Plano'}
+              <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase border-b border-zinc-850 pb-2 mb-3 flex items-center justify-between">
+                <span>{editingPlanId ? '🔄 Editar Plano' : '＋ Cadastrar Plano'}</span>
+                {plnIsUnlimited && (
+                  <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-black">
+                    ILIMITADO
+                  </span>
+                )}
               </h4>
               <form onSubmit={handleSavePlan} className="space-y-3.5">
                 <div>
@@ -2125,52 +2383,186 @@ export default function AdminPanel({
                     required
                     value={plnName}
                     onChange={(e) => setPlnName(e.target.value)}
-                    placeholder="Clube Master, VIP etc"
+                    placeholder="Clube Ilimitado Cabelo & Barba, VIP etc"
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Mensalidade (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={plnPrice}
-                      onChange={(e) => setPlnPrice(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Visitas/Mês</label>
-                    <input
-                      type="number"
-                      required
-                      value={plnServices}
-                      onChange={(e) => setPlnServices(e.target.value)}
-                      className="w-full bg-[#1C1C1F] border border-[#27272A] rounded-lg px-2.5 py-1.5 text-xs text-white"
-                    />
+
+                {/* TIPO DE PLANO: FIXO OU ILIMITADO */}
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide block mb-1">
+                    Tipo de Modalidade do Plano
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlnIsUnlimited(false)}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer border text-center ${
+                        !plnIsUnlimited
+                          ? 'bg-yellow-500 text-black border-yellow-400 shadow-sm'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-850 hover:bg-zinc-900 hover:text-white'
+                      }`}
+                    >
+                      📌 Limite Fixo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlnIsUnlimited(true)}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer border text-center ${
+                        plnIsUnlimited
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm font-extrabold'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-850 hover:bg-zinc-900 hover:text-white'
+                      }`}
+                    >
+                      ⭐ Uso Ilimitado
+                    </button>
                   </div>
                 </div>
+
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Taxa de Repasse Barbeiro (%)</label>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Mensalidade da Assinatura (R$)</label>
                   <input
                     type="number"
+                    step="0.01"
                     required
-                    value={plnCommission}
-                    onChange={(e) => setPlnCommission(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white"
+                    value={plnPrice}
+                    onChange={(e) => setPlnPrice(e.target.value)}
+                    placeholder="120.00"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
                   />
-                  <p className="text-[9px] text-zinc-500 italic mt-0.5">Quanto o barbeiro ganha ao fazer cortes deste plano.</p>
                 </div>
+
+                {/* CAMPOS ESPECÍFICOS: SE FOR ILIMITADO */}
+                {plnIsUnlimited ? (
+                  <div className="space-y-3 bg-amber-500/5 border border-amber-500/30 p-3 rounded-xl">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] text-amber-400 uppercase font-mono font-bold">
+                          Serviços Específicos com Uso Ilimitado:
+                        </label>
+                        <span className="text-[9px] text-zinc-400 font-mono">
+                          {plnIncludedServiceIds.length} selecionado(s)
+                        </span>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 bg-zinc-950/70 p-2 rounded-lg border border-zinc-850">
+                        {services.map(srv => {
+                          const isChecked = plnIncludedServiceIds.includes(srv.id);
+                          return (
+                            <label
+                              key={srv.id}
+                              className="flex items-center justify-between gap-2 text-xs p-1 rounded hover:bg-zinc-900 cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setPlnIncludedServiceIds([...plnIncludedServiceIds, srv.id]);
+                                    } else {
+                                      setPlnIncludedServiceIds(plnIncludedServiceIds.filter(id => id !== srv.id));
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 accent-amber-500"
+                                />
+                                <span className={isChecked ? 'text-amber-300 font-semibold' : 'text-zinc-300'}>
+                                  {srv.name}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 font-mono">
+                                {formatCurrency(srv.price)}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {plnIncludedServiceIds.length === 0 && (
+                        <p className="text-[9px] text-amber-500/80 italic mt-1">
+                          ⚠️ Selecione pelo menos 1 serviço para garantir que o plano tenha escopo definido.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] text-amber-400 uppercase font-mono font-bold">
+                          Repasse Barbeiro (% Proporcional)
+                        </label>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                          {plnBarberPayoutRate}% de repasse
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        required
+                        value={plnBarberPayoutRate}
+                        onChange={(e) => setPlnBarberPayoutRate(e.target.value)}
+                        placeholder="35"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white"
+                      />
+
+                      {/* Simulação Proporcional em Tempo Real */}
+                      {(() => {
+                        const price = parseFloat(plnPrice) || 120;
+                        const rate = parseFloat(plnBarberPayoutRate) || 35;
+                        const basePerCut = price / 4;
+                        const earningPerCut = basePerCut * (rate / 100);
+                        return (
+                          <div className="mt-2 p-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[10px] font-mono space-y-1">
+                            <span className="text-zinc-400 block font-semibold text-[9px] uppercase tracking-wider text-yellow-500">
+                              💡 Cálculo de Lucro por Atendimento:
+                            </span>
+                            <div className="text-zinc-300">
+                              Base estimada (4 cortes/mês): <strong className="text-white">{formatCurrency(basePerCut)}</strong>
+                            </div>
+                            <div className="text-emerald-400 font-bold">
+                              ➔ Barbeiro lucra: {formatCurrency(earningPerCut)} por corte ilimitado
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  /* CAMPOS PARA PLANO FIXO TRADICIONAL */
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Visitas/Mês</label>
+                        <input
+                          type="number"
+                          required
+                          value={plnServices}
+                          onChange={(e) => setPlnServices(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Comissão (%)</label>
+                        <input
+                          type="number"
+                          required
+                          value={plnCommission}
+                          onChange={(e) => setPlnCommission(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-zinc-500 italic">
+                      O barbeiro recebe a comissão regular com base no número de visitas contratadas.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Descrição rápida</label>
                   <input
                     type="text"
                     value={plnDescription}
                     onChange={(e) => setPlnDescription(e.target.value)}
-                    placeholder="Breve descrição do produto..."
+                    placeholder="Ex: Cortes de cabelo ilimitados durante todo o mês..."
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                   />
                 </div>
@@ -2180,7 +2572,7 @@ export default function AdminPanel({
                     rows={3}
                     value={plnRulesText}
                     onChange={(e) => setPlnRulesText(e.target.value)}
-                    placeholder="Uso Individual&#10;Válido por 30 dias&#10;Incluso gel cortesia"
+                    placeholder="Uso Individual e intransferível&#10;Válido por 30 dias&#10;Sem taxa de cancelamento"
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
                   />
                 </div>
@@ -2194,15 +2586,18 @@ export default function AdminPanel({
                         setPlnPrice('');
                         setPlnDescription('');
                         setPlnRulesText('');
+                        setPlnIsUnlimited(false);
+                        setPlnIncludedServiceIds([]);
+                        setPlnBarberPayoutRate('35');
                       }}
-                      className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-400 font-semibold text-xs py-2 rounded-lg cursor-pointer"
+                      className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-400 font-semibold text-xs py-2 rounded-lg cursor-pointer hover:bg-zinc-850 transition"
                     >
                       Cancelar
                     </button>
                   )}
                   <button
                     type="submit"
-                    className="flex-2 bg-yellow-500 text-black hover:bg-yellow-600 font-bold text-xs py-2 rounded-lg cursor-pointer transition uppercase"
+                    className="flex-2 bg-yellow-500 text-black hover:bg-yellow-400 font-bold text-xs py-2 rounded-lg cursor-pointer transition uppercase tracking-wider"
                   >
                     {editingPlanId ? 'Modificar Plano' : 'Ativar Novo Plano'}
                   </button>
@@ -2882,1282 +3277,133 @@ export default function AdminPanel({
 
       {/* TAB 4: GENERAL BUSINESS SYSTEM PARAMETERS */}
       {activeAdminSubTab === 'parametros' && (
-        <div className="bg-[#101012] border border-zinc-800 p-6 rounded-xl text-left space-y-6">
-          <div className="border-b border-zinc-850 pb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-yellow-500 font-mono">
-              Parâmetros Básicos do Negócio (Trima Studio)
-            </h3>
-            <p className="text-xs text-zinc-400 mt-1">
-              Ajuste regras operacionais que comandam as configurações automáticas das comissões, horários de reserva e detalhes da loja.
-            </p>
-          </div>
+        <div className="space-y-6 text-left animate-fadeIn">
+          {/* CATEGORIZED SETTINGS NAVIGATION TABS */}
+          <SettingsTabs
+            activeCategory={activeSettingsCategory}
+            onChangeCategory={setActiveSettingsCategory}
+          />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Nome Comercial da Barbearia</label>
-                <input
-                  type="text"
-                  value={parameters.shopName}
-                  onChange={(e) => handleUpdateParameter('shopName', e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Endereço Físico Completo</label>
-                <input
-                  type="text"
-                  value={parameters.address}
-                  onChange={(e) => handleUpdateParameter('address', e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Telefone Fixo / WhatsApp Suporte</label>
-                <input
-                  type="text"
-                  value={parameters.phone}
-                  onChange={(e) => handleUpdateParameter('phone', e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Abertura Loja (Hora)</label>
-                  <input
-                    type="time"
-                    value={parameters.openTime}
-                    onChange={(e) => handleUpdateParameter('openTime', e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Fechamento Loja (Hora)</label>
-                  <input
-                    type="time"
-                    value={parameters.closeTime}
-                    onChange={(e) => handleUpdateParameter('closeTime', e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Taxa Máxima de Repasse (%)</label>
-                  <input
-                    type="number"
-                    value={Math.round(parameters.defaultCommissionService * 100)}
-                    onChange={(e) => handleUpdateParameter('defaultCommissionService', parseFloat(e.target.value) / 100)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white"
-                  />
-                  <p className="text-[9px] text-zinc-500 italic mt-0.5">Taxa padrão de repasse para prestação de serviços.</p>
-                </div>
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Repasse Vendas Produtos (%)</label>
-                  <input
-                    type="number"
-                    value={Math.round(parameters.defaultCommissionProduct * 100)}
-                    onChange={(e) => handleUpdateParameter('defaultCommissionProduct', parseFloat(e.target.value) / 100)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white"
-                  />
-                  <p className="text-[9px] text-zinc-500 italic mt-0.5">Porcentagem padrão paga ao vender pomadas ou acessórios.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CONFIGURAÇÃO DE DESCONTOS DAS ASSINATURAS RECORRENTES */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500">
-              Descontos de Assinatura por Quantidade de Serviços
-            </h4>
-            <p className="text-xs text-zinc-400">
-              Configure as faixas de descontos aplicadas automaticamente quando o cliente monta sua assinatura mensal personalizada.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">2 Serviços (%)</label>
-                <input
-                  type="number"
-                  value={Math.round((parameters.subDiscount2 ?? 0.05) * 100)}
-                  onChange={(e) => handleUpdateParameter('subDiscount2', parseFloat(e.target.value) / 100)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                />
-                <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: 5%</p>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">3 a 4 Serviços (%)</label>
-                <input
-                  type="number"
-                  value={Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}
-                  onChange={(e) => handleUpdateParameter('subDiscount3to4', parseFloat(e.target.value) / 100)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                />
-                <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: 12%</p>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">5 a 6 Serviços (%)</label>
-                <input
-                  type="number"
-                  value={Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}
-                  onChange={(e) => handleUpdateParameter('subDiscount5to6', parseFloat(e.target.value) / 100)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                />
-                <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: 20%</p>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">A partir de 7 Serviços (%)</label>
-                <input
-                  type="number"
-                  value={Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}
-                  onChange={(e) => handleUpdateParameter('subDiscount7Plus', parseFloat(e.target.value) / 100)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                />
-                <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: 28%</p>
-              </div>
-            </div>
-          </div>
-
-          {/* CONFIGURAÇÃO DO PROGRAMA DE FIDELIDADE */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Gift className="w-4 h-4 text-amber-400" /> PROGRAMA DE FIDELIDADE (PONTOS & RECOMPENSAS)
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Ative ou edite as regras do programa de fidelidade da sua barbearia para reter e premiar seus clientes.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enableLoyalty', !parameters.enableLoyalty)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enableLoyalty !== false ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enableLoyalty !== false ? (
-                  <>
-                    <ToggleRight className="w-4 h-4" /> Ativado
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4" /> Desativado
-                  </>
-                )}
-              </button>
-            </div>
-
-            {parameters.enableLoyalty !== false && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-zinc-950 border border-zinc-850 p-4 rounded-xl animate-fadeIn">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Pontos Gerados por R$ 1,00 Gasto</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={parameters.loyaltyPointsPerReal ?? 1}
-                    onChange={(e) => handleUpdateParameter('loyaltyPointsPerReal', parseFloat(e.target.value) || 1)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1">Ex: R$ 50,00 consumidos = 50 pontos acentuados.</p>
-                </div>
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Mínimo de Pontos para Resgatar</label>
-                  <input
-                    type="number"
-                    value={parameters.loyaltyMinPointsRedeem ?? 100}
-                    onChange={(e) => handleUpdateParameter('loyaltyMinPointsRedeem', parseInt(e.target.value) || 100)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1">Meta para liberar o resgate de desconto.</p>
-                </div>
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Valor do Desconto Resgatado (R$)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={parameters.loyaltyRewardValue ?? 15}
-                    onChange={(e) => handleUpdateParameter('loyaltyRewardValue', parseFloat(e.target.value) || 15)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1">Abatimento direto no valor da comanda no caixa.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* CONFIGURAÇÃO DE LEMBRETES AUTOMÁTICOS VIA WHATSAPP */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-emerald-400" /> MODELO DE LEMBRETE DE AGENDAMENTO (WHATSAPP)
-              </h4>
-              <p className="text-xs text-zinc-400 mt-1">
-                Personalize o texto enviado diretamente para o WhatsApp do cliente com as variáveis do agendamento.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <textarea
-                rows={3}
-                value={parameters.whatsappTemplate || 'Olá {CLIENTE}! Confirmando seu agendamento na {BARBEARIA} para dia {DATA} às {HORA} com {BARBEIRO}. Serviço: {SERVICO}.'}
-                onChange={(e) => handleUpdateParameter('whatsappTemplate', e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs font-mono text-white focus:border-emerald-500 outline-none"
-              />
-              <div className="flex flex-wrap gap-2 text-[10px] font-mono text-zinc-400 bg-zinc-950 p-2.5 rounded-lg border border-zinc-900">
-                <span className="text-zinc-500">Tags disponíveis:</span>
-                <span className="text-yellow-400">{'{CLIENTE}'}</span>
-                <span className="text-yellow-400">{'{BARBEARIA}'}</span>
-                <span className="text-yellow-400">{'{DATA}'}</span>
-                <span className="text-yellow-400">{'{HORA}'}</span>
-                <span className="text-yellow-400">{'{BARBEIRO}'}</span>
-                <span className="text-yellow-400">{'{SERVICO}'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* CONFIGURAÇÃO DE COMPROVANTE DIGITAL & IMPRESSÃO TÉRMICA */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Printer className="w-4 h-4 text-cyan-400" /> COMPROVANTE DIGITAL & IMPRESSÃO TÉRMICA (CUPOM)
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Ative ou desative a emissão de cupons térmicos (impressora de caixa) e comprovantes digitais ao fechar comandas.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enableReceipts', parameters.enableReceipts === false ? true : false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enableReceipts !== false ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enableReceipts !== false ? (
-                  <>
-                    <ToggleRight className="w-4 h-4" /> Ativado
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4" /> Desativado
-                  </>
-                )}
-              </button>
-            </div>
-
-            {parameters.enableReceipts !== false && (
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-3 animate-fadeIn">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Nota de Rodapé do Comprovante</label>
-                  <input
-                    type="text"
-                    value={parameters.receiptFooterText || 'Obrigado pela preferência! Volte sempre.'}
-                    onChange={(e) => handleUpdateParameter('receiptFooterText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Obrigado pela preferência! Volte sempre."
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Esta mensagem aparecerá impressa no final do cupom fiscal/comprovante.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* CONFIGURAÇÃO DE PESQUISA DE SATISFAÇÃO (NPS) */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Star className="w-4 h-4 text-amber-400" /> PESQUISA DE SATISFAÇÃO DO CLIENTE (NPS)
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Ative ou desative o formulário de avaliação para clientes pontuarem o atendimento de 0 a 10.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enableNPS', parameters.enableNPS === false ? true : false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enableNPS !== false ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enableNPS !== false ? (
-                  <>
-                    <ToggleRight className="w-4 h-4" /> Ativado
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4" /> Desativado
-                  </>
-                )}
-              </button>
-            </div>
-
-            {parameters.enableNPS !== false && (
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4 animate-fadeIn">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Título da Pesquisa NPS (Cabeçalho do Cartão)
-                  </label>
-                  <input
-                    type="text"
-                    value={parameters.npsTitle !== undefined ? parameters.npsTitle : 'Avalie Sua Experiência (Pesquisa NPS)'}
-                    onChange={(e) => handleUpdateParameter('npsTitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Avalie Sua Experiência (Pesquisa NPS)"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Título exibido no cartão da pesquisa de satisfação no Portal do Cliente.</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Pergunta da Pesquisa de Satisfação</label>
-                  <input
-                    type="text"
-                    value={parameters.npsQuestion || 'De 0 a 10, qual a probabilidade de você recomendar nossa barbearia a um amigo?'}
-                    onChange={(e) => handleUpdateParameter('npsQuestion', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: De 0 a 10, o quanto você recomendaria a barbearia?"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Pergunta exibida na tela do cliente no Portal Online.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* CONFIGURAÇÃO DE CLIENTE VIP POR BARBEIRO */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-400" /> CLIENTE VIP (SERVIÇOS VIP POR BARBEIRO)
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Defina a cota mensal de atendimentos VIP para cada barbeiro. Nestes atendimentos, 100% do valor fica para o barbeiro (0% de comissão retida pela casa) e o valor do serviço pode ser customizado.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enableVipServices', parameters.enableVipServices === false ? true : false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enableVipServices !== false ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enableVipServices !== false ? (
-                  <><ToggleRight className="w-4 h-4" /> Ativado</>
-                ) : (
-                  <><ToggleLeft className="w-4 h-4" /> Desativado</>
-                )}
-              </button>
-            </div>
-
-            {parameters.enableVipServices !== false && (
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-3">
-                <div className="max-w-xs">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Cota Mensal de Serviços VIP por Barbeiro</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={parameters.vipServicesPerBarberMonthly ?? 5}
-                    onChange={(e) => handleUpdateParameter('vipServicesPerBarberMonthly', parseInt(e.target.value) || 0)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1">Quantidade de cortes/serviços VIP que cada barbeiro pode realizar por mês sem comissão da casa.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* PROGRAMA DE INDICAÇÃO COM DESCONTO */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-amber-400" /> PROGRAMA DE INDICAÇÃO ("INDIQUE E GANHE")
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Ative ou edite o programa de indicação de novos clientes, definindo os descontos para o cliente que indica e para o amigo indicado.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enableReferralProgram', parameters.enableReferralProgram === false ? true : false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enableReferralProgram !== false ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enableReferralProgram !== false ? (
-                  <><ToggleRight className="w-4 h-4" /> Ativado</>
-                ) : (
-                  <><ToggleLeft className="w-4 h-4" /> Desativado</>
-                )}
-              </button>
-            </div>
-
-            {parameters.enableReferralProgram !== false && (
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Desconto para Quem Indica (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={parameters.referralDiscountReferrer ?? 10}
-                      onChange={(e) => handleUpdateParameter('referralDiscountReferrer', parseFloat(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                    />
-                    <p className="text-[9px] text-zinc-500 mt-1">Valor do desconto concedido ao cliente após o amigo indicado realizar o serviço.</p>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Desconto para o Amigo Indicado (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={parameters.referralDiscountReferred ?? 10}
-                      onChange={(e) => handleUpdateParameter('referralDiscountReferred', parseFloat(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
-                    />
-                    <p className="text-[9px] text-zinc-500 mt-1">Valor do desconto de boas-vindas no primeiro agendamento do amigo.</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Título da Promoção de Indicação</label>
-                  <input
-                    type="text"
-                    value={parameters.referralTitle || ''}
-                    onChange={(e) => handleUpdateParameter('referralTitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Indique um Amigo e Ganhe Desconto!"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1">Padrão: 🤝 Indique um Amigo e Ganhe Desconto</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Texto Explicativo e Regras do Programa</label>
-                  <textarea
-                    rows={2}
-                    value={parameters.referralRulesText || ''}
-                    onChange={(e) => handleUpdateParameter('referralRulesText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Regras exibidas ao cliente ao compartilhar seu código de indicação..."
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* REDES SOCIAIS & LOCALIZAÇÃO MAPS */}
-          <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-            <h5 className="text-xs font-bold text-white uppercase font-mono border-b border-zinc-900 pb-2 flex items-center gap-2">
-              📱 Redes Sociais & Link Direto do Google Maps
-            </h5>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Link do Instagram</label>
-                <input
-                  type="url"
-                  value={parameters.instagramUrl || ''}
-                  onChange={(e) => handleUpdateParameter('instagramUrl', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                  placeholder="Ex: https://instagram.com/suabarbearia"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Link do WhatsApp de Contato</label>
-                <input
-                  type="url"
-                  value={parameters.whatsappUrl || ''}
-                  onChange={(e) => handleUpdateParameter('whatsappUrl', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                  placeholder="Ex: https://wa.me/5511999999999"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Link do Facebook</label>
-                <input
-                  type="url"
-                  value={parameters.facebookUrl || ''}
-                  onChange={(e) => handleUpdateParameter('facebookUrl', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                  placeholder="Ex: https://facebook.com/suabarbearia"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Link do TikTok</label>
-                <input
-                  type="url"
-                  value={parameters.tiktokUrl || ''}
-                  onChange={(e) => handleUpdateParameter('tiktokUrl', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                  placeholder="Ex: https://tiktok.com/@suabarbearia"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Link Personalizado do Google Maps (Abrir Endereço)</label>
-                <input
-                  type="url"
-                  value={parameters.googleMapsUrl || ''}
-                  onChange={(e) => handleUpdateParameter('googleMapsUrl', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                  placeholder="Ex: https://maps.google.com/?q=Rua+Exemplo+123"
-                />
-                <p className="text-[9px] text-zinc-500 mt-1 font-mono">Se deixado em branco, o sistema gera automaticamente o link com base no endereço cadastrado acima.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* VISÃO DO CLIENTE: TEXTOS PERSONALIZADOS & GESTÃO DE BANNERS */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                <Layout className="w-4 h-4 text-amber-400" /> VISÃO DO CLIENTE (TEXTOS & BANNERS DO PORTAL)
-              </h4>
-              <p className="text-xs text-zinc-400 mt-1">
-                Personalize os textos de aviso, saudações, botões e mensagens do portal e gerencie os banners promocionais. Você pode usar tags dinâmicas para incluir o nome do cliente logado automaticamente!
-              </p>
-            </div>
-
-            {/* GUIA DE VARIÁVEIS DINÂMICAS DISPONÍVEIS */}
-            <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl space-y-2">
-              <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold font-mono uppercase">
-                <Sparkles className="w-4 h-4 text-yellow-400" />
-                <span>Tags de Variáveis Dinâmicas para Textos e Banners:</span>
-              </div>
-              <p className="text-[11px] text-zinc-300">
-                Insira as tags abaixo em qualquer campo de texto ou banner para personalizar a mensagem em tempo real para cada cliente:
-              </p>
-              <div className="flex flex-wrap gap-2 pt-1 font-mono text-[11px]">
-                <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-                  {'{NOME}'} ou {'{CLIENTE}'} <span className="text-zinc-400 font-normal">➔ Nome do cliente logado</span>
-                </span>
-                <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-                  {'{BARBEARIA}'} <span className="text-zinc-400 font-normal">➔ Nome do seu estabelecimento</span>
-                </span>
-                <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-                  {'{TELEFONE}'} <span className="text-zinc-400 font-normal">➔ WhatsApp de contato</span>
-                </span>
-                <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-                  {'{ENDERECO}'} <span className="text-zinc-400 font-normal">➔ Endereço físico</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-              <h5 className="text-xs font-bold text-white uppercase font-mono border-b border-zinc-900 pb-2">
-                ✍️ Textos do Portal do Cliente
-              </h5>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Etiqueta Superior do Portal
-                  </label>
-                  <input
-                    type="text"
-                    value={parameters.customerPortalHeaderTitle || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalHeaderTitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Portal do Cliente ou Área VIP {BARBEARIA}"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: Portal do Cliente</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Título de Boas-Vindas Principal
-                  </label>
-                  <input
-                    type="text"
-                    value={parameters.customerPortalWelcomeTitle || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalWelcomeTitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Olá, {NOME}! ou Seja bem-vindo(a), {CLIENTE}!"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: Olá, [Nome do Cliente]</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Texto de Subtítulo / Descrição de Boas-Vindas
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={parameters.customerPortalWelcomeText || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalWelcomeText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Olá {NOME}, escolha seu barbeiro de preferência e agende seu horário na {BARBEARIA}..."
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Texto de Agendamento (Online 24h / Ordem de Chegada)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={parameters.customerPortalSchedulingInfoText || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalSchedulingInfoText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Atendimento com agendamento online 24h ou por ordem de chegada no balcão"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: Atendimento com agendamento online 24h ou por ordem de chegada</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Aviso em Destaque / Comunicado Geral
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={parameters.customerPortalAnnouncementText || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalAnnouncementText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Especial para você {NOME}: Atendimento rápido e sem fila este mês na {BARBEARIA}!"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Card Convite do Clube de Assinatura (para Não-Assinantes)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={parameters.customerPortalClubBannerText || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalClubBannerText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: ✨ {NOME}, seja um assinante do clube da {BARBEARIA} e economize até 28% no seu visual mensal!"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Subtítulo / Instrução da Aba "Agendar Atendimento"
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={parameters.customerPortalAgendarSubtitle || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalAgendarSubtitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Olá {NOME}, selecione abaixo o serviço e o barbeiro de sua preferência:"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Título da Pesquisa NPS ("Avalie Sua Experiência")
-                  </label>
-                  <input
-                    type="text"
-                    value={parameters.npsTitle !== undefined ? parameters.npsTitle : 'Avalie Sua Experiência (Pesquisa NPS)'}
-                    onChange={(e) => handleUpdateParameter('npsTitle', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Avalie Sua Experiência (Pesquisa NPS)"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">Texto do título exibido no cartão da pesquisa de satisfação do cliente.</p>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                    Mensagem de Rodapé do Portal do Cliente
-                  </label>
-                  <input
-                    type="text"
-                    value={parameters.customerPortalFooterText || ''}
-                    onChange={(e) => handleUpdateParameter('customerPortalFooterText', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                    placeholder="Ex: Dúvidas ou suporte, {NOME}? Fale conosco pelo WhatsApp {TELEFONE} ou visite a {BARBEARIA} no endereço {ENDERECO}."
-                  />
-                </div>
-              </div>
-
-              {/* Banners Manager */}
-              <div className="border-t border-zinc-900 pt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h5 className="text-xs font-bold text-white uppercase font-mono">Banners Promocionais do Portal</h5>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingBannerId(null);
-                      setBannerTitle('');
-                      setBannerSubtitle('');
-                      setBannerImageUrl('');
-                      setBannerMobileImageUrl('');
-                      setBannerDisplayMode('CAROUSEL');
-                      setBannerTargetDevice('ALL');
-                      setBannerLinkUrl('');
-                      setBannerBadgeText('NOVIDADE');
-                      setBannerIsActive(true);
-                      setShowBannerModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-yellow-500 text-black font-bold text-xs rounded-lg hover:bg-yellow-400 transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Adicionar Banner
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {(parameters.customerPortalBanners || []).length === 0 ? (
-                    <p className="text-xs text-zinc-500 italic col-span-2">Nenhum banner cadastrado no momento.</p>
-                  ) : (
-                    (parameters.customerPortalBanners || []).map(b => (
-                      <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex items-start gap-3 relative">
-                        <img src={b.mobileImageUrl || b.imageUrl} alt={b.title} className="w-20 h-16 object-cover rounded-lg border border-zinc-800 shrink-0" />
-                        <div className="flex-1 min-w-0 text-left">
-                          <div className="flex flex-wrap items-center gap-1">
-                            {b.badgeText && <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">{b.badgeText}</span>}
-                            <span className="bg-cyan-500/10 text-cyan-400 text-[9px] font-mono px-1.5 py-0.5 rounded">
-                              {b.displayMode === 'STATIC' ? 'Fixo' : 'Carrossel'}
-                            </span>
-                            <span className="bg-purple-500/10 text-purple-400 text-[9px] font-mono px-1.5 py-0.5 rounded">
-                              {b.targetDevice === 'MOBILE' ? '📱 Mobile' : b.targetDevice === 'DESKTOP' ? '💻 PC' : '🌐 Todos'}
-                            </span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${b.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                              {b.isActive ? 'Ativo' : 'Inativo'}
-                            </span>
-                          </div>
-                          <h6 className="text-xs font-bold text-white truncate mt-1">{b.title}</h6>
-                          <p className="text-[10px] text-zinc-400 line-clamp-1">{b.subtitle}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingBannerId(b.id);
-                                setBannerTitle(b.title);
-                                setBannerSubtitle(b.subtitle || '');
-                                setBannerImageUrl(b.imageUrl || '');
-                                setBannerMobileImageUrl(b.mobileImageUrl || '');
-                                setBannerDisplayMode(b.displayMode || 'CAROUSEL');
-                                setBannerTargetDevice(b.targetDevice || 'ALL');
-                                setBannerLinkUrl(b.linkUrl || '');
-                                setBannerBadgeText(b.badgeText || '');
-                                setBannerIsActive(b.isActive);
-                                setShowBannerModal(true);
-                              }}
-                              className="text-[10px] text-yellow-500 hover:underline cursor-pointer"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = (parameters.customerPortalBanners || []).map(item =>
-                                  item.id === b.id ? { ...item, isActive: !item.isActive } : item
-                                );
-                                handleUpdateParameter('customerPortalBanners', updated);
-                              }}
-                              className="text-[10px] text-zinc-400 hover:text-white cursor-pointer"
-                            >
-                              {b.isActive ? 'Desativar' : 'Ativar'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBanner(b.id)}
-                              className="text-[10px] text-red-400 hover:underline cursor-pointer ml-auto"
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SISTEMA DE PROMOÇÕES */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-amber-400" /> PROMOÇÕES DA BARBEARIA
-                </h4>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Crie e gerencie promoções para primeira compra, aniversário, datas comemorativas ou cupons especiais.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateParameter('enablePromotions', parameters.enablePromotions === false ? true : false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
-                  parameters.enablePromotions !== false ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'
-                }`}
-              >
-                {parameters.enablePromotions !== false ? (
-                  <><ToggleRight className="w-4 h-4" /> Ativado</>
-                ) : (
-                  <><ToggleLeft className="w-4 h-4" /> Desativado</>
-                )}
-              </button>
-            </div>
-
-            {parameters.enablePromotions !== false && (
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-bold text-white uppercase font-mono">Lista de Promoções Ativas e Cupons</h5>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingPromoId(null);
-                      setPromoTitle('');
-                      setPromoDescription('');
-                      setPromoDiscountType('FIXED');
-                      setPromoDiscountValue('15');
-                      setPromoCode('');
-                      setPromoCategory('FIRST_BOOKING');
-                      setPromoValidUntil('');
-                      setPromoIsActive(true);
-                      setShowPromotionModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-yellow-500 text-black font-bold text-xs rounded-lg hover:bg-yellow-400 transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Nova Promoção
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {(parameters.promotions || []).length === 0 ? (
-                    <p className="text-xs text-zinc-500 italic col-span-2">Nenhuma promoção configurada.</p>
-                  ) : (
-                    (parameters.promotions || []).map(p => (
-                      <div key={p.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-left relative space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded font-mono uppercase">
-                            {p.code}
-                          </span>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${p.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                            {p.isActive ? 'Ativa' : 'Inativa'}
-                          </span>
-                        </div>
-                        <h6 className="text-xs font-bold text-white">{p.title}</h6>
-                        <p className="text-[10px] text-zinc-400">{p.description}</p>
-                        <div className="flex items-center justify-between text-[10px] text-zinc-400 border-t border-zinc-800/80 pt-2 font-mono">
-                          <span>Desconto: {p.discountType === 'PERCENTAGE' ? `${p.discountValue}%` : `R$ ${p.discountValue.toFixed(2)}`}</span>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingPromoId(p.id);
-                                setPromoTitle(p.title);
-                                setPromoDescription(p.description);
-                                setPromoDiscountType(p.discountType);
-                                setPromoDiscountValue(p.discountValue.toString());
-                                setPromoCode(p.code);
-                                setPromoCategory(p.category || 'GENERAL');
-                                setPromoValidUntil(p.validUntil || '');
-                                setPromoIsActive(p.isActive);
-                                setShowPromotionModal(true);
-                              }}
-                              className="text-yellow-500 hover:underline cursor-pointer"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePromotionActive(p.id)}
-                              className="text-zinc-400 hover:text-white cursor-pointer"
-                            >
-                              {p.isActive ? 'Desativar' : 'Ativar'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeletePromotion(p.id)}
-                              className="text-red-400 hover:underline cursor-pointer"
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Visual branding adjustments */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500">
-              Personalização Visual, Cores & Logomarca
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Cor de Destaque / Tema (Hex)</label>
-                <div className="flex gap-2 mb-3">
-                  <input
-                    type="color"
-                    value={parameters.primaryColor || '#eab308'}
-                    onChange={(e) => handleUpdateParameter('primaryColor', e.target.value)}
-                    className="h-10 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
-                  />
-                  <input
-                    type="text"
-                    value={parameters.primaryColor || '#eab308'}
-                    onChange={(e) => handleUpdateParameter('primaryColor', e.target.value)}
-                    placeholder="#eab308"
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Cor do Fundo do Sistema (Hex)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={parameters.backgroundColor || '#000000'}
-                    onChange={(e) => handleUpdateParameter('backgroundColor', e.target.value)}
-                    className="h-10 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
-                  />
-                  <input
-                    type="text"
-                    value={parameters.backgroundColor || '#000000'}
-                    onChange={(e) => handleUpdateParameter('backgroundColor', e.target.value)}
-                    placeholder="#000000"
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-                <p className="text-[9px] text-zinc-500 italic mt-1.5">Defina a cor principal dos botões e textos e a cor sólida aplicada ao fundo de tela do sistema.</p>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">Logotipo da Barbearia (Upload de Imagem)</label>
-                <div
-                  onDragOver={handleLogoDragOver}
-                  onDragLeave={handleLogoDragLeave}
-                  onDrop={handleLogoDrop}
-                  className={`border-2 border-dashed rounded-xl p-4 transition text-center flex flex-col items-center justify-center cursor-pointer min-h-[120px] ${
-                    isDraggingLogo 
-                      ? 'border-yellow-500 bg-yellow-500/10'
-                      : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
-                  }`}
-                  onClick={() => document.getElementById('logo-file-picker')?.click()}
-                >
-                  <input
-                    id="logo-file-picker"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                  />
-                  
-                  {parameters.logoUrl ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <img
-                        src={parameters.logoUrl}
-                        alt="Logotipo atual"
-                        className="h-14 w-14 object-contain rounded-lg border border-zinc-800 p-1 bg-black"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="text-center">
-                        <p className="text-[10px] text-zinc-300 font-bold">Logotipo Carregado</p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdateParameter('logoUrl', '');
-                          }}
-                          className="mt-1 text-[9px] text-red-500 uppercase font-mono tracking-wider hover:underline"
-                        >
-                          Remover logotipo
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <span className="text-lg">📁</span>
-                      <p className="text-xs text-zinc-300">Arrastar & Soltar a Imagem aqui</p>
-                      <p className="text-[9px] text-zinc-500 font-mono">ou clique para selecionar do dispositivo</p>
-                    </div>
-                  )}
-                </div>
-                <p className="text-[9px] text-zinc-500 italic mt-1">Carregue uma imagem quadrada da sua barbearia para o carregamento e topo dos painéis.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* GERENCIAR FORMAS DE PAGAMENTO */}
-          <div className="border-t border-zinc-850 pt-6 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-yellow-500">
-              💳 Gerenciamento de Formas de Pagamento
-            </h4>
-            <p className="text-xs text-zinc-400">
-              Adicione, altere ou remova as formas de pagamento disponíveis para finalizar comandas no caixa.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Add form */}
-              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-3">
-                <h5 className="text-[11px] font-mono font-bold text-white uppercase tracking-wider">
-                  ＋ Adicionar Forma de Pagamento
-                </h5>
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="Ex: PICPAY, VALE, CRÉDITO"
-                    value={newPaymentMethodName}
-                    onChange={(e) => setNewPaymentMethodName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white uppercase font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!newPaymentMethodName.trim()) return;
-                      const currentList = parameters.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA'];
-                      const valueUpper = newPaymentMethodName.trim().toUpperCase();
-                      if (currentList.includes(valueUpper)) {
-                        alert('Esta forma de pagamento já existe!');
-                        return;
-                      }
-                      handleUpdateParameter('paymentMethods', [...currentList, valueUpper]);
-                      setNewPaymentMethodName('');
-                    }}
-                    className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold uppercase rounded-lg text-xs transition font-mono cursor-pointer"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {/* List and edit */}
-              <div className="md:col-span-2 bg-[#121214] border border-zinc-850 p-4 rounded-xl space-y-3">
-                <h5 className="text-[11px] font-mono font-bold text-white uppercase tracking-wider">
-                  Formas de Pagamento Cadastradas
-                </h5>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {(parameters.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA']).map((pm, idx) => {
-                    const isEditing = editingPaymentMethodIndex === idx;
-                    return (
-                      <div key={pm} className="flex items-center justify-between gap-2 p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg">
-                        {isEditing ? (
-                          <div className="flex items-center gap-1.5 flex-1">
-                            <input
-                              type="text"
-                              value={editingPaymentMethodName}
-                              onChange={(e) => setEditingPaymentMethodName(e.target.value)}
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white uppercase font-mono w-full"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!editingPaymentMethodName.trim()) return;
-                                const currentList = parameters.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA'];
-                                const valueUpper = editingPaymentMethodName.trim().toUpperCase();
-                                const updated = [...currentList];
-                                updated[idx] = valueUpper;
-                                handleUpdateParameter('paymentMethods', updated);
-                                setEditingPaymentMethodIndex(null);
-                                setEditingPaymentMethodName('');
-                              }}
-                              className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded text-[10px]"
-                            >
-                              Salvar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingPaymentMethodIndex(null);
-                                setEditingPaymentMethodName('');
-                              }}
-                              className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px]"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <span className="text-xs font-mono font-bold text-white uppercase tracking-wide">
-                              💳 {pm}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingPaymentMethodIndex(idx);
-                                  setEditingPaymentMethodName(pm);
-                                }}
-                                className="px-1.5 py-1 text-[10px] uppercase font-mono text-zinc-400 hover:text-yellow-500 cursor-pointer"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const currentList = parameters.paymentMethods || ['PIX', 'CARTÃO', 'DINHEIRO', 'ASSINATURA'];
-                                  if (currentList.length <= 1) {
-                                    alert('Mantenha ao menos 1 forma de pagamento cadastrada.');
-                                    return;
-                                  }
-                                  if (confirm(`Excluir forma de pagamento "${pm}"?`)) {
-                                    const updated = currentList.filter((_, i) => i !== idx);
-                                    handleUpdateParameter('paymentMethods', updated);
-                                  }
-                                }}
-                                className="px-1.5 py-1 text-[10px] uppercase font-mono text-zinc-500 hover:text-red-500 cursor-pointer"
-                              >
-                                Excluir
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl flex items-start gap-2 text-xs text-yellow-500 leading-snug">
-            <span>💡</span>
-            <div>
-              <strong>Dica de Operação:</strong> Todos os campos acima salvam de formato contínuo e persistente em seu navegador. Ao alterar aqui, os clientes passarão a ver os novos horários e o novo nome comercial em seus respectivos painéis de agendamento online.
-            </div>
-          </div>
-
-          {/* BACKUP & RESTORE SECTION */}
-          <div className="border-t border-zinc-850 pt-6 mt-4 space-y-4">
-            <div className="flex items-center gap-2 text-yellow-500">
-              <Database className="w-5 h-5 animate-pulse" />
-              <h4 className="text-xs font-bold uppercase tracking-wider font-mono">
-                Backup & Restauração do Sistema
-              </h4>
-            </div>
-            
-            <p className="text-xs text-zinc-400">
-              Gerencie cópias de segurança do seu sistema. Você pode exportar todos os dados atuais (Comandas, Serviços, Clientes, Agendamentos, Parâmetros e Comissões) para um arquivo JSON seguro e restaurá-lo a qualquer momento para reverter alterações ou migrar de dispositivo.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Export Card */}
-              <div className="p-4 bg-zinc-950 border border-zinc-850 rounded-xl space-y-3 flex flex-col justify-between">
-                <div>
-                  <h5 className="text-xs font-bold text-white uppercase font-mono mb-1">Backup Completo (Exportar)</h5>
-                  <p className="text-[11px] text-zinc-500">Salva e baixa uma cópia completa instantânea de todas as tabelas em formato JSON seguro.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleBackupExport}
-                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-black font-bold uppercase font-mono text-[11px] tracking-wider rounded-lg transition cursor-pointer"
-                >
-                  📥 Baixar Backup (.json)
-                </button>
-              </div>
-
-              {/* Import Card */}
-              <div className="p-4 bg-zinc-950 border border-zinc-850 rounded-xl space-y-3 flex flex-col justify-between">
-                <div>
-                  <h5 className="text-xs font-bold text-white uppercase font-mono mb-1">Restaurar do Arquivo (Importar)</h5>
-                  <p className="text-[11px] text-zinc-500">Substitui integralmente o banco online com os dados contidos em seu arquivo de backup local.</p>
-                </div>
-                
-                {isRestoringBackup ? (
-                  <div className="py-2.5 flex items-center justify-center gap-2 text-yellow-500 font-mono text-xs animate-pulse">
-                    <span className="animate-spin">⏳</span> Carregando e Sincronizando dados com o Firebase...
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      id="backup-file-importer"
-                      type="file"
-                      accept=".json"
-                      onChange={handleBackupImport}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById('backup-file-importer')?.click()}
-                      className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 hover:border-zinc-700 text-yellow-500 font-bold uppercase font-mono text-[11px] tracking-wider rounded-lg transition cursor-pointer"
-                    >
-                      📤 Carregar & Restaurar Banco (.json)
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* RESET DATABASE SECTION */}
-          {onResetDatabase && (
-            <div className="border-t border-zinc-850 pt-6 mt-4 space-y-4">
-              <div className="flex items-center gap-2 text-rose-500">
-                <ShieldAlert className="w-5 h-5 animate-pulse" />
-                <h4 className="text-xs font-bold uppercase tracking-wider font-mono">
-                  Limpeza de Dados (Modo Produção)
-                </h4>
-              </div>
-              
-              <p className="text-xs text-zinc-400">
-                Esta ação apagará <strong>todos os registros cadastrados</strong> no Firestore (usuários, serviços, comandas, estoques e agendamentos) para que você possa iniciar os cadastros de sua loja sem nenhum dado demo ou simulações. O usuário principal com login: <strong className="text-yellow-500 font-mono">wagnerbmoreno@gmail.com</strong> e senha: <strong className="text-yellow-500 font-mono">Wag01121201!</strong> será preservado.
-              </p>
-
-              {resetStatus === 'idle' && !showResetConfirm && (
-                <button
-                  type="button"
-                  onClick={() => setShowResetConfirm(true)}
-                  className="px-4 py-2.5 bg-rose-600/10 hover:bg-[#ff4d4d] border border-rose-500/30 hover:border-rose-500 text-rose-500 hover:text-black rounded-lg text-xs font-bold uppercase font-mono tracking-wider transition cursor-pointer"
-                >
-                  🧹 Apagar todos os dados e resetar banco
-                </button>
-              )}
-
-              {showResetConfirm && resetStatus === 'idle' && (
-                <div className="p-4 bg-rose-600/10 border border-rose-500/40 rounded-xl space-y-3">
-                  <p className="text-xs font-bold text-rose-500">
-                    ⚠ ATENÇÃO: Tem certeza absoluta? Essa ação limpará as tabelas do seu Firebase online e reiniciará a aplicação deslogando você.
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          setResetStatus('resetting');
-                          if (onResetDatabase) {
-                            await onResetDatabase();
-                          }
-                          setResetStatus('done');
-                        } catch (err) {
-                          console.error(err);
-                          setResetStatus('idle');
-                          setShowResetConfirm(false);
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-lg text-[11px] font-bold uppercase font-mono tracking-wider transition cursor-pointer"
-                    >
-                      Sim, Apagar e Resetar Agora
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowResetConfirm(false)}
-                      className="px-3 py-1.5 bg-zinc-850 text-zinc-300 rounded-lg text-[11px] font-semibold uppercase font-mono hover:bg-zinc-800 transition cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {resetStatus === 'resetting' && (
-                <div className="flex items-center gap-2.5 text-yellow-500 font-mono text-xs">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-yellow-500 border-t-transparent"></div>
-                  <span>Limpando coleções no Firestore... Por favor, aguarde.</span>
-                </div>
-              )}
-            </div>
+          {/* 1. PROMOÇÕES & CUPONS */}
+          {activeSettingsCategory === 'promocoes' && (
+            <SettingsPromotions
+              parameters={parameters}
+              coupons={coupons}
+              onUpdateParameter={handleUpdateParameter}
+              onOpenNewPromotion={() => {
+                setEditingPromoId(null);
+                setPromoTitle('');
+                setPromoDescription('');
+                setPromoDiscountType('PERCENTAGE');
+                setPromoDiscountValue('10');
+                setPromoCode('');
+                setPromoValidUntil('');
+                setPromoIsActive(true);
+                setShowPromotionModal(true);
+              }}
+              onEditPromotion={(promo) => {
+                setEditingPromoId(promo.id);
+                setPromoTitle(promo.title);
+                setPromoDescription(promo.description || '');
+                setPromoDiscountType(promo.discountType);
+                setPromoDiscountValue(String(promo.discountValue));
+                setPromoCode(promo.code || '');
+                setPromoValidUntil(promo.validUntil || '');
+                setPromoIsActive(promo.isActive);
+                setShowPromotionModal(true);
+              }}
+              onTogglePromotionActive={handleTogglePromotionActive}
+              onDeletePromotion={handleDeletePromotion}
+              onOpenNewCoupon={() => {
+                setEditingCouponId(null);
+                setCpnCode('');
+                setCpnDiscountType('PERCENTAGE');
+                setCpnDiscountValue('');
+                setCpnMinPurchase('');
+                setCpnMaxUsesPerCustomer('1');
+                setCpnValidUntil('');
+                setCpnDescription('');
+                setCpnIsActive(true);
+                setShowCouponModal(true);
+              }}
+              onEditCoupon={handleEditCouponSelect}
+              onToggleCouponActive={handleToggleCouponActive}
+              onDeleteCoupon={handleDeleteCoupon}
+            />
           )}
+
+          {/* 2. ASSINATURAS & PLANOS */}
+          {activeSettingsCategory === 'assinaturas' && (
+            <SettingsSubscriptions
+              parameters={parameters}
+              plans={plans}
+              services={services}
+              barberDetails={barberDetails}
+              onUpdateParameter={handleUpdateParameter}
+              onNavigateToPlans={() => setActiveAdminSubTab('cadastros')}
+            />
+          )}
+
+          {/* 3. GERAL & OPERACIONAL */}
+          {activeSettingsCategory === 'geral' && (
+            <SettingsGeneral
+              parameters={parameters}
+              onUpdateParameter={handleUpdateParameter}
+              newPaymentMethodName={newPaymentMethodName}
+              setNewPaymentMethodName={setNewPaymentMethodName}
+              handleLogoUpload={handleLogoUpload}
+              handleLogoDrop={handleLogoDrop}
+              handleLogoDragOver={handleLogoDragOver}
+              handleLogoDragLeave={handleLogoDragLeave}
+              isDraggingLogo={isDraggingLogo}
+            />
+          )}
+
+          {/* 4. FIDELIDADE, VIP & NPS */}
+          {activeSettingsCategory === 'fidelidade' && (
+            <SettingsLoyalty
+              parameters={parameters}
+              onUpdateParameter={handleUpdateParameter}
+            />
+          )}
+
+          {/* 5. PORTAL DO CLIENTE */}
+          {activeSettingsCategory === 'portal' && (
+            <SettingsPortal
+              parameters={parameters}
+              onUpdateParameter={handleUpdateParameter}
+              onOpenNewBanner={handleOpenNewBanner}
+              onEditBanner={handleEditBanner}
+              handleDeleteBanner={handleDeleteBanner}
+              handleToggleBannerActive={handleToggleBannerActive}
+              handleMoveBanner={handleMoveBanner}
+            />
+          )}
+
+          {/* 6. SEGURANÇA & DADOS */}
+          {activeSettingsCategory === 'dados' && (
+            <SettingsSecurity
+              handleBackupExport={handleBackupExport}
+              handleBackupImport={handleBackupImport}
+              isRestoringBackup={isRestoringBackup}
+              onResetDatabase={onResetDatabase}
+              showResetConfirm={showResetConfirm}
+              setShowResetConfirm={setShowResetConfirm}
+              resetConfirmPassword={resetConfirmPassword}
+              setResetConfirmPassword={setResetConfirmPassword}
+              resetStatus={resetStatus}
+              resetErrorMessage={resetErrorMessage}
+              handleResetDatabase={handleResetDatabase}
+            />
+          )}
+
+          {/* DICA DE OPERAÇÃO */}
+          <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl flex items-start gap-2.5 text-xs text-yellow-500 leading-snug">
+            <span className="text-base">💡</span>
+            <div>
+              <strong>Dica de Operação:</strong> Todas as alterações realizadas nas abas de configurações são salvas instantaneamente e sincronizadas em tempo real com todos os dispositivos e painéis de clientes e barbeiros.
+            </div>
+          </div>
         </div>
       )}
 
@@ -6533,6 +5779,145 @@ export default function AdminPanel({
                   className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold text-xs rounded-lg cursor-pointer"
                 >
                   Salvar Promoção
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CRIAR / EDITAR CUPOM DE DESCONTO */}
+      {showCouponModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#101012] border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 text-left shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-yellow-400" />
+                {editingCouponId ? 'Editar Cupom de Desconto' : 'Novo Cupom de Desconto'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCouponModal(false)}
+                className="text-zinc-400 hover:text-white text-xs font-mono font-bold cursor-pointer"
+              >
+                ✕ FECHAR
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCoupon} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Código do Cupom *</label>
+                  <input
+                    type="text"
+                    required
+                    value={cpnCode}
+                    onChange={(e) => setCpnCode(e.target.value.toUpperCase())}
+                    placeholder="Ex: PROMO10, NATALVIP"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono font-bold text-yellow-400 uppercase focus:border-yellow-500 outline-none"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Tipo de Desconto</label>
+                  <select
+                    value={cpnDiscountType}
+                    onChange={(e) => setCpnDiscountType(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                  >
+                    <option value="PERCENTAGE">Porcentagem (%)</option>
+                    <option value="FIXED">Valor Fixo (R$)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                    Valor do Desconto * {cpnDiscountType === 'PERCENTAGE' ? '(%)' : '(R$)'}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={cpnDiscountValue}
+                    onChange={(e) => setCpnDiscountValue(e.target.value)}
+                    placeholder={cpnDiscountType === 'PERCENTAGE' ? '15' : '15.00'}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Gasto Mínimo (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cpnMinPurchase}
+                    onChange={(e) => setCpnMinPurchase(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Limite por Cliente</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cpnMaxUsesPerCustomer}
+                    onChange={(e) => setCpnMaxUsesPerCustomer(e.target.value)}
+                    placeholder="1"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Validade Até</label>
+                  <input
+                    type="date"
+                    value={cpnValidUntil}
+                    onChange={(e) => setCpnValidUntil(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">Descrição do Cupom</label>
+                <input
+                  type="text"
+                  value={cpnDescription}
+                  onChange={(e) => setCpnDescription(e.target.value)}
+                  placeholder="Ex: 15% OFF no combo Corte + Barba"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="cpn-active"
+                  checked={cpnIsActive}
+                  onChange={(e) => setCpnIsActive(e.target.checked)}
+                  className="rounded border-zinc-700 text-yellow-500 focus:ring-yellow-500"
+                />
+                <label htmlFor="cpn-active" className="text-xs text-zinc-300 cursor-pointer">
+                  Cupom Ativo e Disponível para Uso
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCouponModal(false)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold text-xs rounded-lg cursor-pointer"
+                >
+                  Salvar Cupom
                 </button>
               </div>
             </form>

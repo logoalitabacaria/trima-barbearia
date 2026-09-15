@@ -706,7 +706,7 @@ export default function BarberPanel({
   const selectedFichaUser = users.find(u => u.id === selectedFichaCliId);
 
   return (
-    <div className="space-y-6 text-left font-sans">
+    <div className="w-full max-w-full space-y-6 text-left font-sans overflow-x-hidden">
       
       {/* Top Action Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#101012] border border-zinc-800 p-4 rounded-xl">

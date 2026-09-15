@@ -172,7 +172,10 @@ export default function CustomerPanel({
   const totalQuantity: number = (Object.values(selectedServiceQuantities) as number[]).reduce((acc: number, q: number) => acc + q, 0);
   const rawTotalCost: number = services.reduce((acc: number, s: Service) => acc + (s.price * ((selectedServiceQuantities[s.id] as number) || 0)), 0);
 
+  const isQuantityDiscountEnabled: boolean = parameters.enableQuantitySubscriptionDiscount !== false;
+
   const getDiscountPercentage = (count: number): number => {
+    if (!isQuantityDiscountEnabled) return 0;
     if (count < 2) return 0;
     if (count === 2) return parameters.subDiscount2 ?? 0.05;
     if (count >= 3 && count <= 4) return parameters.subDiscount3to4 ?? 0.12;
@@ -471,7 +474,7 @@ export default function CustomerPanel({
   const categoriesList = ['TODOS', ...Array.from(new Set(services.map(s => s.category || 'Outros')))];
 
   return (
-    <div className={`space-y-5 text-left max-w-3xl mx-auto font-sans p-3 sm:p-5 pb-24 rounded-3xl shadow-sm border transition-colors ${
+    <div className={`w-full max-w-3xl mx-auto space-y-5 text-left font-sans p-3 sm:p-5 pb-24 rounded-3xl shadow-sm border transition-colors overflow-x-hidden ${
       isDarkMode ? 'bg-slate-950 text-slate-100 border-slate-800' : 'bg-slate-50 text-slate-800 border-slate-200/80'
     }`}>
       
@@ -848,47 +851,56 @@ export default function CustomerPanel({
       )}
 
       {/* Main Tab Switcher */}
-      <div className={`flex flex-wrap gap-2 p-1.5 rounded-xl border ${
+      <div className={`grid grid-cols-3 gap-1.5 p-1.5 rounded-xl border w-full max-w-full ${
         isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200/60 border-slate-300/80'
       }`}>
         <button
           onClick={() => setActiveTab('agendar')}
-          className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
+          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
             activeTab === 'agendar'
-              ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
               : isDarkMode
               ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Calendar className="w-4 h-4" />
-          <span>1. Agendar Atendimento</span>
+          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span className="truncate">
+            <span className="sm:hidden">Agendar</span>
+            <span className="hidden sm:inline">1. Agendar</span>
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('assinatura')}
-          className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
+          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
             activeTab === 'assinatura'
-              ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
               : isDarkMode
               ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Award className="w-4 h-4" />
-          <span>2. Clube de Assinatura</span>
+          <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span className="truncate">
+            <span className="sm:hidden">Assinatura</span>
+            <span className="hidden sm:inline">2. Assinatura</span>
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('historico')}
-          className={`flex-1 min-w-[160px] py-3 px-4 rounded-lg text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
+          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
             activeTab === 'historico'
-              ? 'bg-amber-500 text-slate-950 shadow-md scale-[1.01]'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
               : isDarkMode
               ? 'text-slate-300 hover:text-white hover:bg-slate-800'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Clock className="w-4 h-4" />
-          <span>3. Minhas Reservas ({myAppointments.length})</span>
+          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span className="truncate">
+            <span className="sm:hidden">Reservas ({myAppointments.length})</span>
+            <span className="hidden sm:inline">3. Reservas ({myAppointments.length})</span>
+          </span>
         </button>
       </div>
 
@@ -947,29 +959,37 @@ export default function CustomerPanel({
           )}
 
           {/* WIZARD STEP INDICATOR BAR */}
-          <div className={`p-2.5 sm:p-3 rounded-2xl border shadow-xs flex items-center justify-between gap-2 sm:gap-3 ${
+          <div className={`p-1.5 sm:p-2.5 rounded-2xl border shadow-xs grid grid-cols-3 gap-1 sm:gap-2 w-full max-w-full ${
             isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/90'
           }`}>
+            {/* Step 1: Serviço */}
             <button
               type="button"
               onClick={() => {
                 setBookingStep(1);
                 document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`w-full min-w-0 py-2 sm:py-2.5 px-1 sm:px-3 rounded-xl text-[10px] sm:text-xs font-mono font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                 bookingStep === 1
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-1 ring-amber-400'
                   : isDarkMode
                   ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center text-[10px] font-black shrink-0">1</span>
-              <span className="truncate">1. Serviço</span>
+              <span className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-black shrink-0 ${
+                bookingStep === 1 ? 'bg-slate-950 text-amber-400' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-300 text-slate-800'
+              }`}>
+                1
+              </span>
+              <span className="truncate">
+                <span className="xs:hidden sm:hidden">Serviço</span>
+                <span className="hidden xs:inline sm:hidden">1. Serviço</span>
+                <span className="hidden sm:inline">1. Serviço</span>
+              </span>
             </button>
 
-            <span className="text-slate-400 font-bold shrink-0">➔</span>
-
+            {/* Step 2: Profissional */}
             <button
               type="button"
               onClick={() => {
@@ -979,20 +999,27 @@ export default function CustomerPanel({
                 }
               }}
               disabled={bookingServiceIds.length === 0}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`w-full min-w-0 py-2 sm:py-2.5 px-1 sm:px-3 rounded-xl text-[10px] sm:text-xs font-mono font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                 bookingStep === 2
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-1 ring-amber-400'
                   : bookingServiceIds.length > 0
                   ? isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
               }`}
             >
-              <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center text-[10px] font-black shrink-0">2</span>
-              <span className="truncate">2. Profissional</span>
+              <span className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-black shrink-0 ${
+                bookingStep === 2 ? 'bg-slate-950 text-amber-400' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-300 text-slate-800'
+              }`}>
+                2
+              </span>
+              <span className="truncate">
+                <span className="xs:hidden sm:hidden">Barbeiro</span>
+                <span className="hidden xs:inline sm:hidden">2. Barbeiro</span>
+                <span className="hidden sm:inline">2. Profissional</span>
+              </span>
             </button>
 
-            <span className="text-slate-400 font-bold shrink-0">➔</span>
-
+            {/* Step 3: Data e Horário */}
             <button
               type="button"
               onClick={() => {
@@ -1002,16 +1029,24 @@ export default function CustomerPanel({
                 }
               }}
               disabled={bookingServiceIds.length === 0 || !bookingBarberId}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`w-full min-w-0 py-2 sm:py-2.5 px-1 sm:px-3 rounded-xl text-[10px] sm:text-xs font-mono font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                 bookingStep === 3
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-1 ring-amber-400'
                   : bookingServiceIds.length > 0 && bookingBarberId
                   ? isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
               }`}
             >
-              <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center text-[10px] font-black shrink-0">3</span>
-              <span className="truncate">3. Data e Horário</span>
+              <span className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-black shrink-0 ${
+                bookingStep === 3 ? 'bg-slate-950 text-amber-400' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-300 text-slate-800'
+              }`}>
+                3
+              </span>
+              <span className="truncate">
+                <span className="xs:hidden sm:hidden">Horário</span>
+                <span className="hidden xs:inline sm:hidden">3. Horário</span>
+                <span className="hidden sm:inline">3. Data/Horário</span>
+              </span>
             </button>
           </div>
 
@@ -1602,30 +1637,49 @@ export default function CustomerPanel({
                 </p>
               </div>
 
-              {/* Tabela de Descontos Progressivos */}
-              <div className={`p-4 rounded-xl border ${
-                isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <span className="text-[10px] text-amber-500 uppercase font-mono font-extrabold block mb-2">Tabela de Descontos do Clube:</span>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>2 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
+              {/* Tabela de Descontos Progressivos ou Alerta de Desativação */}
+              {isQuantityDiscountEnabled ? (
+                <div className={`p-4 rounded-xl border ${
+                  isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] text-amber-500 uppercase font-mono font-extrabold">Tabela de Descontos Progressivos:</span>
+                    <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      Descontos Ativos
+                    </span>
                   </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>3 a 4 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
-                  </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>5 a 6 Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
-                  </div>
-                  <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                    <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>7+ Serviços</span>
-                    <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>2 Serviços</span>
+                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
+                    </div>
+                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>3 a 4 Serviços</span>
+                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
+                    </div>
+                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>5 a 6 Serviços</span>
+                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
+                    </div>
+                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>7+ Serviços</span>
+                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                }`}>
+                  <span className="text-lg">ℹ️</span>
+                  <div className="text-xs">
+                    <p className="font-semibold text-amber-500">Descontos automáticos por quantidade desativados</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Os serviços selecionados serão cobrados pelo valor nominal da tabela, sem desconto percentual por volume.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Seleção de Serviços por Categoria */}
               <div className="space-y-4">
@@ -2067,7 +2121,7 @@ export default function CustomerPanel({
       </div>
 
       {/* MENU DE FACILIDADES DE ACESSO FIXO NA PARTE INFERIOR DA TELA */}
-      <div className={`fixed bottom-0 left-0 right-0 z-50 backdrop-blur-md border-t py-2.5 px-3 flex justify-around items-center transition-colors ${
+      <div className={`fixed bottom-0 left-0 right-0 z-50 sm:hidden backdrop-blur-md border-t py-2.5 px-3 flex justify-around items-center transition-colors ${
         isDarkMode
           ? 'bg-slate-950/95 border-slate-800 text-slate-100 shadow-[0_-4px_25px_rgba(0,0,0,0.5)]'
           : 'bg-white/95 border-slate-200 text-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.08)]'

@@ -297,11 +297,16 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col font-sans selection:bg-yellow-500 selection:text-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-black text-zinc-100 flex flex-col font-sans selection:bg-yellow-500 selection:text-black relative">
       {/* Enforce custom administrator theme accent colors */}
       <style>{`
         :root {
           --primary-color: ${state.parameters?.primaryColor || '#eab308'};
+        }
+        html, body {
+          overflow-x: hidden !important;
+          max-width: 100vw !important;
+          width: 100% !important;
         }
         body, html, .min-h-screen, .bg-black {
           background-color: ${state.parameters?.backgroundColor || '#000000'} !important;
@@ -356,10 +361,10 @@ export default function App() {
         />
       ) : (
         /* MAIN BODY WRAPPER (LOGGED OR GUEST MODE) */
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col w-full max-w-full overflow-x-hidden">
           
           {/* HEADER MAIN BRANDING */}
-          <header className="bg-black border-b border-zinc-850 px-4 py-3.5 sm:px-6 lg:px-8 flex justify-between items-center shrink-0">
+          <header className="bg-black border-b border-zinc-850 px-4 py-3.5 sm:px-6 lg:px-8 flex justify-between items-center shrink-0 w-full max-w-full">
             <div className="flex items-center gap-2.5 text-left">
               {state.parameters?.logoUrl ? (
                 <img src={state.parameters.logoUrl} alt="Logo" className="h-10 w-10 object-contain rounded-lg border border-zinc-805" referrerPolicy="no-referrer" />
@@ -382,20 +387,20 @@ export default function App() {
 
             {/* Profile widget / Login Trigger */}
             {currentUser ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <div className="hidden sm:flex flex-col text-right">
                   <span className="text-xs font-bold text-white">{currentUser.name}</span>
                   <span className="text-[10px] text-yellow-500 font-mono uppercase font-semibold">
                     Perfil: {currentUser.role}
                   </span>
                 </div>
-                <span className="text-xl bg-zinc-900 border border-zinc-800 p-1 px-2 rounded-lg">
+                <span className="text-lg sm:text-xl bg-zinc-900 border border-zinc-800 p-1 px-1.5 sm:px-2 rounded-lg">
                   {currentUser.avatar || '👤'}
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowManualPasswordModal(true)}
-                  className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-yellow-400 border border-zinc-800 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-yellow-400 border border-zinc-800 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
                   title="Alterar Minha Senha"
                 >
                   <Key className="w-4 h-4 text-yellow-500" />
@@ -403,7 +408,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setIsManualOpen(true)}
-                  className="px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg transition cursor-pointer text-xs font-mono font-bold flex items-center gap-1.5"
                   title="Abrir Manual do Sistema"
                 >
                   <HelpCircle className="w-4 h-4" />
@@ -490,7 +495,7 @@ export default function App() {
           })()}
 
           {/* MAIN MODULE LOADER VIEWS */}
-          <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto w-full pb-20">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl mx-auto w-full pb-20">
             {!currentUser ? (
               <CustomerPanel
                 currentCustomer={guestUser}
@@ -574,6 +579,8 @@ export default function App() {
                       subscriptions={state.subscriptions}
                       appointments={state.appointments}
                       parameters={state.parameters}
+                      plans={state.plans || []}
+                      services={state.services || []}
                       coupons={state.coupons || []}
                       creditTransactions={state.creditTransactions || []}
                       onUpdateState={handleUpdateState}

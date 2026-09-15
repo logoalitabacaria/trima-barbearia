@@ -162,9 +162,12 @@ export interface LoyaltyPlan {
   name: string;
   priceMonthly: number;
   description: string;
-  servicesIncludedCount: number; // number of uses allowed per month
+  servicesIncludedCount: number; // number of uses allowed per month (or 999 for unlimited)
   currentCommissionRate: number; // barber payout for these customer visits (in %)
   rules: string[];
+  isUnlimited?: boolean; // Unlimited use of specific services
+  includedServiceIds?: string[]; // Specific service IDs with unlimited use
+  barberPayoutRate?: number; // Editable barber payout percentage (e.g. 35%)
 }
 
 export interface CustomerSubscription {
@@ -182,6 +185,9 @@ export interface CustomerSubscription {
   selectedServiceIds?: string[];
   totalPriceMonthly?: number;
   discountPercentage?: number;
+  isUnlimited?: boolean;
+  includedServiceIds?: string[];
+  barberPayoutRate?: number;
 }
 
 export interface BarberPayout {
@@ -311,6 +317,8 @@ export interface SystemParameters {
   primaryColor?: string; // e.g. "#eab308" (yellow)
   backgroundColor?: string; // e.g. "#000000" (black)
   logoUrl?: string; // customizable image URL
+  // Subscription Quantity Discount Config
+  enableQuantitySubscriptionDiscount?: boolean; // When false, the automatic discount based on service quantity is disabled
   subDiscount2?: number; // e.g. 0.05
   subDiscount3to4?: number; // e.g. 0.12
   subDiscount5to6?: number; // e.g. 0.20

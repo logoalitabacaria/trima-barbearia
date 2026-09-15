@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { DollarSign, Wallet, Check, AlertCircle, Trash2, Clock, Eye, Info, Percent, Printer, X, Copy } from 'lucide-react';
-import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription, Appointment, DiscountCoupon, CustomerCreditTransaction } from '../types';
+import { User, Comanda, BarberDetail, SystemParameters, CustomerSubscription, Appointment, DiscountCoupon, CustomerCreditTransaction, LoyaltyPlan, Service } from '../types';
 import { playComandaPaidSound, playSubscriptionActivatedSound } from '../utils/soundEffects';
 
 interface CashierPanelProps {
@@ -16,6 +16,8 @@ interface CashierPanelProps {
   subscriptions: CustomerSubscription[];
   appointments?: Appointment[];
   parameters: SystemParameters;
+  plans?: LoyaltyPlan[];
+  services?: Service[];
   coupons?: DiscountCoupon[];
   creditTransactions?: CustomerCreditTransaction[];
   onUpdateState: (key: string, val: any) => void;
@@ -29,6 +31,8 @@ export default function CashierPanel({
   subscriptions,
   appointments = [],
   parameters,
+  plans = [],
+  services = [],
   coupons = [],
   creditTransactions = [],
   onUpdateState
@@ -139,16 +143,29 @@ export default function CashierPanel({
         if (paymentMethod === 'SUBSCRIPTION' || paymentMethod === 'ASSINATURA') {
           // Find customer's active subscription to check plan discount percentage
           const activeSub = subscriptions.find(s => s.customerId === selectedComanda.customerId && s.isActive);
-          let planDiscountPct = 0;
-          if (activeSub && activeSub.discountPercentage !== undefined && activeSub.discountPercentage > 0) {
-            planDiscountPct = activeSub.discountPercentage > 1 ? activeSub.discountPercentage / 100 : activeSub.discountPercentage;
+          const activePlan = plans.find(p => p.id === activeSub?.planId);
+
+          if (activePlan?.isUnlimited || activeSub?.isUnlimited) {
+            // UNLIMITED SUBSCRIPTION: Barber payout is proportional to the subscription value!
+            // The payout rate is editable on the plan (barberPayoutRate or currentCommissionRate)
+            const payoutPct = (activePlan?.barberPayoutRate ?? (activePlan?.currentCommissionRate ? (activePlan.currentCommissionRate > 1 ? activePlan.currentCommissionRate : activePlan.currentCommissionRate * 100) : 35)) / 100;
+            const planMonthly = activePlan?.priceMonthly || (activeSub?.totalPriceMonthly ?? 120);
+            const benchmarkVisits = (activePlan?.servicesIncludedCount && activePlan.servicesIncludedCount < 100) ? activePlan.servicesIncludedCount : 4;
+            const proportionalValuePerService = planMonthly / benchmarkVisits;
+            calculatedCommissionAmount += proportionalValuePerService * payoutPct;
           } else {
-            // Default 12% discount for standard subscription plan (subDiscount3to4 = 0.12)
-            planDiscountPct = parameters.subDiscount3to4 ?? 0.12;
+            let planDiscountPct = 0;
+            if (parameters.enableQuantitySubscriptionDiscount !== false) {
+              if (activeSub && activeSub.discountPercentage !== undefined && activeSub.discountPercentage > 0) {
+                planDiscountPct = activeSub.discountPercentage > 1 ? activeSub.discountPercentage / 100 : activeSub.discountPercentage;
+              } else {
+                planDiscountPct = parameters.subDiscount3to4 ?? 0.12;
+              }
+            }
+            // Service value after plan discount (if enabled)
+            const discountedLineValue = lineValue * (1 - planDiscountPct);
+            calculatedCommissionAmount += discountedLineValue * subscriptionSrvRate;
           }
-          // Service value after plan discount
-          const discountedLineValue = lineValue * (1 - planDiscountPct);
-          calculatedCommissionAmount += discountedLineValue * subscriptionSrvRate;
         } else {
           calculatedCommissionAmount += lineValue * standardSrvRate;
         }
@@ -261,7 +278,7 @@ export default function CashierPanel({
   };
 
   return (
-    <div className="space-y-6 text-left">
+    <div className="w-full max-w-full space-y-6 text-left overflow-x-hidden">
       {/* EXTREMELY CRITICAL NOTIFICATION BANNER ENFORCING SCOPE boundaries */}
       <div className="bg-yellow-500/10 border-2 border-yellow-500/40 p-5 rounded-2xl flex items-start gap-3 text-yellow-500 text-xs leading-snug">
         <Info className="w-5 h-5 shrink-0 mt-0.5" />

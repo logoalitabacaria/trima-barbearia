@@ -1,6 +1,14 @@
 import { SystemParameters, Appointment, Product, Comanda } from '../types';
 
 /**
+ * Formats a number to Brazilian Real currency string (R$ 0,00)
+ */
+export function formatCurrency(value?: number): string {
+  if (value === undefined || value === null || isNaN(value)) return 'R$ 0,00';
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/**
  * Formats a phone number to standard international WhatsApp format without characters
  */
 export function formatWhatsAppPhone(phone?: string): string {
