@@ -3,8 +3,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { Layout, MessageSquare, Receipt, Sparkles, Plus, Trash2, ArrowUp, ArrowDown, Image as ImageIcon, ToggleLeft, ToggleRight } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Layout,
+  MessageSquare,
+  Receipt,
+  Sparkles,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Image as ImageIcon,
+  ToggleLeft,
+  ToggleRight,
+  Eye,
+  EyeOff,
+  MoveVertical,
+  Type,
+  CheckCircle2,
+  Calendar,
+  Gift,
+  Award,
+  Share2,
+  Clock,
+  Scissors
+} from 'lucide-react';
 import { SystemParameters, CustomerBanner } from '../../types';
 
 interface SettingsPortalProps {
@@ -17,6 +40,8 @@ interface SettingsPortalProps {
   handleMoveBanner: (id: string, direction: 'up' | 'down') => void;
 }
 
+type PortalEditorTab = 'visibility' | 'order' | 'texts' | 'banners' | 'communication';
+
 export default function SettingsPortal({
   parameters,
   onUpdateParameter,
@@ -26,69 +51,547 @@ export default function SettingsPortal({
   handleToggleBannerActive,
   handleMoveBanner
 }: SettingsPortalProps) {
+  const [activeTab, setActiveTab] = useState<PortalEditorTab>('visibility');
   const isReceiptsEnabled = parameters.enableReceipts !== false;
   const banners: CustomerBanner[] = parameters.customerPortalBanners || [];
 
+  // Default block sequence
+  const DEFAULT_BLOCKS = [
+    { id: 'welcome', name: 'Cabeçalho & Saudação de Boas-Vindas', icon: '👋' },
+    { id: 'banners', name: 'Carrossel de Banners Promocionais', icon: '🎠' },
+    { id: 'scheduling', name: 'Agendamento de Horários & Serviços', icon: '✂️' },
+    { id: 'advantages', name: 'Vantagens, Cupons & Fidelidade', icon: '🎁' },
+    { id: 'subscriptions', name: 'Clube de Assinaturas & Pacotes', icon: '⭐' },
+    { id: 'appointments', name: 'Meus Agendamentos Recentes', icon: '📅' },
+    { id: 'nps', name: 'Pesquisa de Satisfação NPS', icon: '⭐' },
+    { id: 'footer', name: 'Rodapé, Redes Sociais & Contato', icon: '📍' }
+  ];
+
+  const currentBlockOrder = (parameters.customerPortalBlockOrder && parameters.customerPortalBlockOrder.length > 0)
+    ? parameters.customerPortalBlockOrder
+    : DEFAULT_BLOCKS.map(b => b.id);
+
+  const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
+    const newOrder = [...currentBlockOrder];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newOrder.length) return;
+    const temp = newOrder[index];
+    newOrder[index] = newOrder[targetIndex];
+    newOrder[targetIndex] = temp;
+    onUpdateParameter('customerPortalBlockOrder', newOrder);
+  };
+
+  const handleResetBlockOrder = () => {
+    onUpdateParameter('customerPortalBlockOrder', DEFAULT_BLOCKS.map(b => b.id));
+  };
+
   return (
     <div className="space-y-6 text-left">
-      {/* 1. TEXTOS E BANNERS DO PORTAL DO CLIENTE */}
-      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-5">
-        <div className="border-b border-zinc-850 pb-3">
-          <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-            <Layout className="w-4 h-4 text-amber-400" />
-            Visão do Cliente: Textos do Portal & Banners Promocionais
-          </h4>
-          <p className="text-xs text-zinc-400 mt-1">
-            Personalize os títulos, saudações e banners visuais exibidos para o cliente logado ou visitante no portal.
-          </p>
+      {/* HEADER DA ABA */}
+      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-850 pb-4">
+          <div>
+            <h3 className="text-base font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+              <Layout className="w-5 h-5 text-amber-400" />
+              Central de Personalização da Visão do Cliente
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1">
+              Controle tudo o que o cliente vê: ative ou desative seções, reordene os blocos na tela e altere os textos livremente.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-lg self-start sm:self-auto">
+            100% Customizável
+          </span>
         </div>
 
-        {/* GUIA DE VARIÁVEIS DINÂMICAS */}
-        <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl space-y-2">
-          <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold font-mono uppercase">
-            <Sparkles className="w-4 h-4 text-yellow-400" />
-            <span>Tags Dinâmicas Disponíveis:</span>
-          </div>
-          <p className="text-[11px] text-zinc-300">
-            Insira as tags abaixo nos campos de texto para personalizar a mensagem em tempo real para cada cliente:
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1 font-mono text-[10px]">
-            <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-              {'{NOME}'} <span className="text-zinc-400 font-normal">➔ Nome do cliente logado</span>
-            </span>
-            <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-              {'{BARBEARIA}'} <span className="text-zinc-400 font-normal">➔ Nome da barbearia</span>
-            </span>
-            <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-              {'{TELEFONE}'} <span className="text-zinc-400 font-normal">➔ Telefone de suporte</span>
-            </span>
-            <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
-              {'{ENDERECO}'} <span className="text-zinc-400 font-normal">➔ Endereço físico</span>
-            </span>
-          </div>
-        </div>
+        {/* SUBTABS INTERNAS DO EDITOR */}
+        <div className="flex flex-wrap gap-2 pt-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab('visibility')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'visibility'
+                ? 'bg-yellow-500 text-black shadow-md'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            <span>1. Visibilidade dos Blocos</span>
+          </button>
 
-        {/* CAMPOS DE TEXTO DO PORTAL */}
-        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-          <h5 className="text-xs font-bold text-white uppercase font-mono border-b border-zinc-900 pb-2">
-            ✍️ Textos do Portal do Cliente
-          </h5>
+          <button
+            type="button"
+            onClick={() => setActiveTab('order')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'order'
+                ? 'bg-yellow-500 text-black shadow-md'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+            }`}
+          >
+            <MoveVertical className="w-4 h-4" />
+            <span>2. Ordem na Tela</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('texts')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'texts'
+                ? 'bg-yellow-500 text-black shadow-md'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+            }`}
+          >
+            <Type className="w-4 h-4" />
+            <span>3. Textos & Mensagens</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('banners')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'banners'
+                ? 'bg-yellow-500 text-black shadow-md'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>4. Banners do Topo ({banners.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('communication')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'communication'
+                ? 'bg-yellow-500 text-black shadow-md'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>5. WhatsApp & Recibos</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ABA 1: VISIBILIDADE DOS ELEMENTOS */}
+      {activeTab === 'visibility' && (
+        <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-6">
+          <div className="border-b border-zinc-850 pb-3">
+            <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+              <Eye className="w-4 h-4 text-yellow-400" />
+              Controle de Visibilidade dos Elementos
+            </h4>
+            <p className="text-xs text-zinc-400 mt-1">
+              Desative o que não deseja exibir na visão do cliente. As seções desativadas serão completamente ocultadas.
+            </p>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Boas-vindas */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">👋 Cabeçalho & Saudação de Boas-Vindas</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Exibe saudação com o nome do cliente e botão de tema claro/escuro.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowWelcomeHeader', parameters.portalShowWelcomeHeader === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowWelcomeHeader !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowWelcomeHeader !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowWelcomeHeader !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Banners do Topo */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🎠 Carrossel de Banners Promocionais</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Exibe os banners rotativos no topo do portal do cliente.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowBannersCarousel', parameters.portalShowBannersCarousel === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowBannersCarousel !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowBannersCarousel !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowBannersCarousel !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Agendamento */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">✂️ Seção de Agendamento Online</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Fluxo de escolha de serviço, barbeiro, data e horário.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowSchedulingFlow', parameters.portalShowSchedulingFlow === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowSchedulingFlow !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowSchedulingFlow !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowSchedulingFlow !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Busca de Serviços */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🔍 Campo de Busca de Serviços</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Barra de busca por texto na tela de seleção de serviços.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowServiceSearch', parameters.portalShowServiceSearch === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowServiceSearch !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowServiceSearch !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowServiceSearch !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Filtros de Categoria */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🏷️ Filtros de Categoria no Agendamento</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Botões de categorias (Cabelo, Barba, Combos, etc.) sem o botão "Todos".</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowServiceCategories', parameters.portalShowServiceCategories === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowServiceCategories !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowServiceCategories !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowServiceCategories !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Bloco de Vantagens e Cupons */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🎁 Bloco de Vantagens, Cupons & Fidelidade</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Card expansível contendo cupons, indique e ganhe e fidelidade.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowAdvantagesCollapsible', parameters.portalShowAdvantagesCollapsible === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowAdvantagesCollapsible !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowAdvantagesCollapsible !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowAdvantagesCollapsible !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Indique e Ganhe */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🤝 Programa Indique e Ganhe (MGM)</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Código e botão para copiar link de indicação de amigos.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowReferralProgram', parameters.portalShowReferralProgram === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowReferralProgram !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowReferralProgram !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowReferralProgram !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Promoções Ativas */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🏷️ Promoções & Cupons de Desconto</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Lista de cupons e promoções com botão para copiar o código.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowPromotions', parameters.portalShowPromotions === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowPromotions !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowPromotions !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowPromotions !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Cartão de Fidelidade */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">💳 Cartão de Fidelidade Digital</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Pontos acumulados e progresso para resgatar desconto.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowLoyaltyCard', parameters.portalShowLoyaltyCard === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowLoyaltyCard !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowLoyaltyCard !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowLoyaltyCard !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Seção de Assinaturas */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">⭐ Clube VIP & Assinaturas Recorrentes</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Exibição de planos mensais e contratação de assinatura.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowSubscriptionsSection', parameters.portalShowSubscriptionsSection === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowSubscriptionsSection !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowSubscriptionsSection !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowSubscriptionsSection !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Montador de Pacote */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">🛠️ Montador de Pacotes Personalizados</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Permite ao cliente montar seu próprio pacote mensal com quantidade de serviços.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowPackageBuilder', parameters.portalShowPackageBuilder === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowPackageBuilder !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowPackageBuilder !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowPackageBuilder !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Histórico de Agendamentos */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">📅 Meus Agendamentos Recentes</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Lista de agendamentos futuros e passados do cliente logado.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowAppointmentsHistory', parameters.portalShowAppointmentsHistory === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowAppointmentsHistory !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowAppointmentsHistory !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowAppointmentsHistory !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Pesquisa NPS */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">⭐ Pesquisa de Satisfação NPS</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Coleta de nota de 0 a 10 e comentário de avaliação do cliente.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowNpsSurvey', parameters.portalShowNpsSurvey === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowNpsSurvey !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowNpsSurvey !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowNpsSurvey !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+
+            {/* Rodapé e Redes Sociais */}
+            <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white font-mono">📍 Rodapé, Contatos & Redes Sociais</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Endereço físico, telefone, horários e links para Instagram / WhatsApp.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('portalShowContactFooter', parameters.portalShowContactFooter === false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  parameters.portalShowContactFooter !== false
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-zinc-850 text-zinc-500 border border-zinc-800'
+                }`}
+              >
+                {parameters.portalShowContactFooter !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{parameters.portalShowContactFooter !== false ? 'Visível' : 'Oculto'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ABA 2: ORDEM DOS BLOCOS NA TELA */}
+      {activeTab === 'order' && (
+        <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-850 pb-3">
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+                <MoveVertical className="w-4 h-4 text-yellow-400" />
+                Ordem de Exibição dos Blocos na Tela
+              </h4>
+              <p className="text-xs text-zinc-400 mt-1">
+                Altere a sequência das seções no portal do cliente usando os botões de subir e descer.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetBlockOrder}
+              className="px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-mono rounded-lg transition border border-zinc-800 self-start sm:self-auto cursor-pointer"
+            >
+              Restaurar Ordem Padrão
+            </button>
+          </div>
+
+          <div className="space-y-2.5 max-w-2xl">
+            {currentBlockOrder.map((blockId, index) => {
+              const blockInfo = DEFAULT_BLOCKS.find(b => b.id === blockId) || {
+                id: blockId,
+                name: blockId,
+                icon: '📦'
+              };
+
+              return (
+                <div
+                  key={blockId}
+                  className="flex items-center justify-between gap-3 bg-zinc-950 border border-zinc-850 p-3.5 rounded-xl hover:border-zinc-700 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 text-yellow-400 font-mono text-xs font-black flex items-center justify-center">
+                      {index + 1}
+                    </span>
+                    <span className="text-lg">{blockInfo.icon}</span>
+                    <span className="text-xs font-bold text-white font-mono">{blockInfo.name}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() => handleMoveBlock(index, 'up')}
+                      className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-20 rounded-lg transition cursor-pointer border border-zinc-800"
+                      title="Mover para cima"
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === currentBlockOrder.length - 1}
+                      onClick={() => handleMoveBlock(index, 'down')}
+                      className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-20 rounded-lg transition cursor-pointer border border-zinc-800"
+                      title="Mover para baixo"
+                    >
+                      <ArrowDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ABA 3: TEXTOS & MENSAGENS */}
+      {activeTab === 'texts' && (
+        <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-5">
+          <div className="border-b border-zinc-850 pb-3">
+            <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+              <Type className="w-4 h-4 text-yellow-400" />
+              Edição de Textos & Títulos das Telas
+            </h4>
+            <p className="text-xs text-zinc-400 mt-1">
+              Modifique livremente os títulos, descrições e avisos para refletir a comunicação exata da sua barbearia.
+            </p>
+          </div>
+
+          {/* GUIA DE VARIÁVEIS DINÂMICAS */}
+          <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl space-y-2">
+            <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold font-mono uppercase">
+              <Sparkles className="w-4 h-4 text-yellow-400" />
+              <span>Tags Dinâmicas (Substituídas Automaticamente):</span>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1 font-mono text-[10px]">
+              <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
+                {'{NOME}'} <span className="text-zinc-400 font-normal">➔ Nome do cliente</span>
+              </span>
+              <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
+                {'{BARBEARIA}'} <span className="text-zinc-400 font-normal">➔ Nome do estabelecimento</span>
+              </span>
+              <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
+                {'{TELEFONE}'} <span className="text-zinc-400 font-normal">➔ Telefone de contato</span>
+              </span>
+              <span className="bg-zinc-900 border border-amber-500/40 text-amber-400 px-2 py-1 rounded font-bold">
+                {'{ENDERECO}'} <span className="text-zinc-400 font-normal">➔ Endereço físico</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Etiqueta superior */}
             <div>
               <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                Etiqueta Superior do Portal
+                Etiqueta Superior do Topo
               </label>
               <input
                 type="text"
                 value={parameters.customerPortalHeaderTitle || ''}
                 onChange={(e) => onUpdateParameter('customerPortalHeaderTitle', e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
                 placeholder="Ex: Portal do Cliente ou Área VIP {BARBEARIA}"
               />
               <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: Portal do Cliente</p>
             </div>
 
+            {/* Título de Boas-vindas */}
             <div>
               <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
                 Título de Boas-Vindas Principal
@@ -97,12 +600,13 @@ export default function SettingsPortal({
                 type="text"
                 value={parameters.customerPortalWelcomeTitle || ''}
                 onChange={(e) => onUpdateParameter('customerPortalWelcomeTitle', e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
                 placeholder="Ex: Olá, {NOME}! ou Seja bem-vindo(a) à {BARBEARIA}!"
               />
               <p className="text-[9px] text-zinc-500 mt-1 font-mono">Padrão: Olá, [Nome do Cliente]</p>
             </div>
 
+            {/* Subtítulo de Boas-vindas */}
             <div>
               <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
                 Texto de Subtítulo de Boas-Vindas
@@ -111,60 +615,173 @@ export default function SettingsPortal({
                 rows={2}
                 value={parameters.customerPortalWelcomeText || ''}
                 onChange={(e) => onUpdateParameter('customerPortalWelcomeText', e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                placeholder="Ex: Olá {NOME}, escolha seu profissional e agende seu corte..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Escolha seu barbeiro de preferência e agende seu horário com total facilidade."
               />
             </div>
 
+            {/* Aviso de Agendamento */}
             <div>
               <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-                Texto de Agendamento (Online 24h / Ordem de Chegada)
+                Aviso de Atendimento (Online 24h / Balcão)
               </label>
               <textarea
                 rows={2}
                 value={parameters.customerPortalSchedulingInfoText || ''}
                 onChange={(e) => onUpdateParameter('customerPortalSchedulingInfoText', e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-                placeholder="Ex: Atendimento com agendamento online 24h ou por ordem de chegada no balcão"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Atendimento com agendamento online 24h ou por ordem de chegada no balcão."
+              />
+            </div>
+
+            {/* Título de Agendamento */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Título da Seção de Agendamento
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalAgendarTitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalAgendarTitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Agende Seu Atendimento"
+              />
+            </div>
+
+            {/* Subtítulo de Agendamento */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Subtítulo da Seção de Agendamento
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalAgendarSubtitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalAgendarSubtitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Escolha os serviços desejados, seu profissional e o melhor horário."
+              />
+            </div>
+
+            {/* Título do Clube de Assinaturas */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Título do Clube de Assinaturas Recorrente
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalSubscriptionsTitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalSubscriptionsTitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Clube de Assinatura Recorrente & Descontos"
+              />
+            </div>
+
+            {/* Subtítulo do Clube de Assinaturas */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Subtítulo do Clube de Assinaturas
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalSubscriptionsSubtitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalSubscriptionsSubtitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Economize todo mês com planos mensais exclusivos."
+              />
+            </div>
+
+            {/* Título do Montador de Pacotes */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Título do Montador de Pacotes
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalPackageTitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalPackageTitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Monte Seu Pacote Mensal de Cortes & Barba"
+              />
+            </div>
+
+            {/* Subtítulo do Montador de Pacotes */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Subtítulo do Montador de Pacotes
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalPackageSubtitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalPackageSubtitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Selecione quais serviços você deseja receber ao longo do mês:"
+              />
+            </div>
+
+            {/* Título de Agendamentos Recentes */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Título dos Agendamentos Recentes do Cliente
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalAppointmentsTitle || ''}
+                onChange={(e) => onUpdateParameter('customerPortalAppointmentsTitle', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: Meus Agendamentos Recentes"
+              />
+            </div>
+
+            {/* Rodapé do Portal */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Mensagem Final do Rodapé do Portal
+              </label>
+              <input
+                type="text"
+                value={parameters.customerPortalFooterText || ''}
+                onChange={(e) => onUpdateParameter('customerPortalFooterText', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                placeholder="Ex: {BARBEARIA} - O melhor estilo e cuidado para você."
               />
             </div>
           </div>
         </div>
+      )}
 
-        {/* GESTÃO DE BANNERS */}
-        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+      {/* ABA 4: BANNERS DO TOPO */}
+      {activeTab === 'banners' && (
+        <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
+          <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
             <div>
-              <h5 className="text-xs font-bold text-white uppercase font-mono flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-amber-400" /> Banners Promocionais do Carrossel ({banners.length})
+              <h5 className="text-sm font-bold text-yellow-500 uppercase font-mono flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-amber-400" /> Banners Promocionais do Topo ({banners.length})
               </h5>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                Banners rotativos exibidos no topo do portal do cliente com links ou avisos.
+              <p className="text-xs text-zinc-400 mt-1">
+                Banners rotativos exibidos no topo do portal do cliente com links, anúncios ou avisos.
               </p>
             </div>
 
-            <div>
-              <button
-                type="button"
-                onClick={onOpenNewBanner}
-                className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold text-xs font-mono rounded-lg transition cursor-pointer flex items-center gap-1 shadow"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Adicionar Banner</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onOpenNewBanner}
+              className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold text-xs font-mono rounded-lg transition cursor-pointer flex items-center gap-1 shadow"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Adicionar Banner</span>
+            </button>
           </div>
 
           {banners.length === 0 ? (
-            <p className="text-xs text-zinc-500 italic py-2 font-mono">
+            <p className="text-xs text-zinc-500 italic py-4 font-mono text-center">
               Nenhum banner cadastrado. O portal exibirá o cabeçalho padrão sem carrossel.
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {banners.map((banner, index) => (
                 <div
                   key={banner.id}
-                  className="flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl hover:border-zinc-700 transition"
+                  className="flex items-center justify-between gap-3 bg-zinc-950 border border-zinc-850 p-3 rounded-xl hover:border-zinc-700 transition"
                 >
                   <div
                     onClick={() => onEditBanner(banner)}
@@ -186,12 +803,12 @@ export default function SettingsPortal({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       disabled={index === 0}
                       onClick={() => handleMoveBanner(banner.id, 'up')}
-                      className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-30 rounded transition cursor-pointer"
+                      className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-30 rounded-lg transition cursor-pointer border border-zinc-800"
                       title="Mover para cima"
                     >
                       <ArrowUp className="w-3.5 h-3.5" />
@@ -200,7 +817,7 @@ export default function SettingsPortal({
                       type="button"
                       disabled={index === banners.length - 1}
                       onClick={() => handleMoveBanner(banner.id, 'down')}
-                      className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-30 rounded transition cursor-pointer"
+                      className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-30 rounded-lg transition cursor-pointer border border-zinc-800"
                       title="Mover para baixo"
                     >
                       <ArrowDown className="w-3.5 h-3.5" />
@@ -208,10 +825,10 @@ export default function SettingsPortal({
                     <button
                       type="button"
                       onClick={() => handleToggleBannerActive(banner.id)}
-                      className={`px-2 py-1 rounded text-[10px] font-mono transition cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition cursor-pointer ${
                         banner.isActive
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-zinc-800 text-zinc-400'
+                          : 'bg-zinc-850 text-zinc-400'
                       }`}
                     >
                       {banner.isActive ? 'Ativo' : 'Pausado'}
@@ -219,7 +836,7 @@ export default function SettingsPortal({
                     <button
                       type="button"
                       onClick={() => handleDeleteBanner(banner.id)}
-                      className="p-1 bg-zinc-800 hover:bg-red-950/50 text-zinc-400 hover:text-red-400 rounded transition cursor-pointer"
+                      className="p-1.5 bg-zinc-900 hover:bg-red-950/50 text-zinc-400 hover:text-red-400 rounded-lg transition cursor-pointer border border-zinc-800"
                       title="Excluir Banner"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -230,83 +847,88 @@ export default function SettingsPortal({
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* 2. MODELO DE LEMBRETE DE AGENDAMENTO (WHATSAPP) */}
-      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
-        <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 border-b border-zinc-850 pb-3 flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-yellow-400" />
-          Modelo de Lembrete de Agendamento (WhatsApp)
-        </h4>
-
-        <div>
-          <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-            Texto Padrão Enviado pelo Barbeiro ou Caixa
-          </label>
-          <textarea
-            rows={4}
-            value={parameters.whatsappTemplate || ''}
-            onChange={(e) => onUpdateParameter('whatsappTemplate', e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs text-white font-mono focus:border-yellow-500 outline-none"
-            placeholder="Olá {CLIENTE}, confirmando seu horário na {BARBEARIA} dia {DATA} às {HORA} com {BARBEIRO}..."
-          />
-          <p className="text-[9px] text-zinc-500 mt-1 font-mono">
-            Tags disponíveis: {'{CLIENTE}'}, {'{BARBEARIA}'}, {'{BARBEIRO}'}, {'{DATA}'}, {'{HORA}'}, {'{SERVICO}'}.
-          </p>
-        </div>
-      </div>
-
-      {/* 3. COMPROVANTE DIGITAL & IMPRESSÃO TÉRMICA */}
-      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-850">
-          <div>
-            <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-yellow-400" />
-              Comprovante Digital & Impressão Térmica
+      {/* ABA 5: WHATSAPP & RECIBOS */}
+      {activeTab === 'communication' && (
+        <div className="space-y-6">
+          {/* Lembrete WhatsApp */}
+          <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
+            <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 border-b border-zinc-850 pb-3 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-yellow-400" />
+              Modelo de Lembrete de Agendamento (WhatsApp)
             </h4>
-            <p className="text-xs text-zinc-400 mt-1">
-              Geração de cupom fiscal não-oficial / recibo de atendimento após pagamento no caixa.
-            </p>
+
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                Texto Padrão Enviado pelo Barbeiro ou Caixa
+              </label>
+              <textarea
+                rows={4}
+                value={parameters.whatsappTemplate || ''}
+                onChange={(e) => onUpdateParameter('whatsappTemplate', e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                placeholder="Olá {CLIENTE}, confirmando seu horário na {BARBEARIA} dia {DATA} às {HORA} com {BARBEIRO}..."
+              />
+              <p className="text-[9px] text-zinc-500 mt-1 font-mono">
+                Tags disponíveis: {'{CLIENTE}'}, {'{BARBEARIA}'}, {'{BARBEIRO}'}, {'{DATA}'}, {'{HORA}'}, {'{SERVICO}'}.
+              </p>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => onUpdateParameter('enableReceipts', !isReceiptsEnabled)}
-            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto shadow-md ${
-              isReceiptsEnabled
-                ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-yellow-500/10'
-                : 'bg-zinc-850 text-zinc-400 hover:text-white border border-zinc-700'
-            }`}
-          >
-            {isReceiptsEnabled ? (
-              <>
-                <ToggleRight className="w-5 h-5 text-black" />
-                <span>Recibos Ativados</span>
-              </>
-            ) : (
-              <>
-                <ToggleLeft className="w-5 h-5 text-zinc-500" />
-                <span>Recibos Desativados</span>
-              </>
+          {/* Comprovante Digital */}
+          <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-850">
+              <div>
+                <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-yellow-400" />
+                  Comprovante Digital & Impressão Térmica
+                </h4>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Geração de cupom de atendimento após pagamento no caixa.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onUpdateParameter('enableReceipts', !isReceiptsEnabled)}
+                className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto shadow-md ${
+                  isReceiptsEnabled
+                    ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-yellow-500/10'
+                    : 'bg-zinc-850 text-zinc-400 hover:text-white border border-zinc-700'
+                }`}
+              >
+                {isReceiptsEnabled ? (
+                  <>
+                    <ToggleRight className="w-5 h-5 text-black" />
+                    <span>Recibos Ativados</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-5 h-5 text-zinc-500" />
+                    <span>Recibos Desativados</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {isReceiptsEnabled && (
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                  Texto de Rodapé do Comprovante
+                </label>
+                <input
+                  type="text"
+                  value={parameters.receiptFooterText || ''}
+                  onChange={(e) => onUpdateParameter('receiptFooterText', e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
+                  placeholder="Ex: Obrigado pela preferência! Volte sempre."
+                />
+              </div>
             )}
-          </button>
-        </div>
-
-        {isReceiptsEnabled && (
-          <div>
-            <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
-              Texto de Rodapé do Comprovante
-            </label>
-            <input
-              type="text"
-              value={parameters.receiptFooterText || ''}
-              onChange={(e) => onUpdateParameter('receiptFooterText', e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
-              placeholder="Ex: Obrigado pela preferência! Volte sempre."
-            />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

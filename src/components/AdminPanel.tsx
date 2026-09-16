@@ -41,6 +41,7 @@ interface AdminPanelProps {
   coupons?: DiscountCoupon[];
   creditTransactions?: CustomerCreditTransaction[];
   onUpdateState: (key: string, val: any) => void;
+  onClearSalesHistory?: () => Promise<void>;
   onResetDatabase?: () => Promise<void>;
 }
 
@@ -61,6 +62,7 @@ export default function AdminPanel({
   coupons = [],
   creditTransactions = [],
   onUpdateState,
+  onClearSalesHistory,
   onResetDatabase
 }: AdminPanelProps) {
   // Toggle sections inside Admin
@@ -147,6 +149,8 @@ export default function AdminPanel({
   const [srvPrice, setSrvPrice] = useState('');
   const [srvDuration, setSrvDuration] = useState('30');
   const [srvCategory, setSrvCategory] = useState<string>('HAIR');
+  const [srvCategories, setSrvCategories] = useState<string[]>(['HAIR']);
+  const [newSrvCustomCat, setNewSrvCustomCat] = useState('');
   const [srvDescription, setSrvDescription] = useState('');
 
   // 2. Product Form
@@ -156,6 +160,8 @@ export default function AdminPanel({
   const [prdStock, setPrdStock] = useState('10');
   const [prdMinStock, setPrdMinStock] = useState('5');
   const [prdCostPrice, setPrdCostPrice] = useState('0');
+  const [prdCategories, setPrdCategories] = useState<string[]>([]);
+  const [newPrdCustomCat, setNewPrdCustomCat] = useState('');
   const [prdDescription, setPrdDescription] = useState('');
 
   // 3. Plan Form
@@ -262,6 +268,31 @@ export default function AdminPanel({
   const [editingCategoryNewValue, setEditingCategoryNewValue] = useState('');
 
   // Database wiping states
+  const [showClearSalesConfirm, setShowClearSalesConfirm] = useState(false);
+  const [clearSalesStatus, setClearSalesStatus] = useState<'idle' | 'clearing' | 'done'>('idle');
+  const [clearSalesPassword, setClearSalesPassword] = useState('');
+  const [clearSalesErrorMessage, setClearSalesErrorMessage] = useState('');
+
+  const handleClearSalesHistory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (clearSalesPassword !== 'admin123') {
+      setClearSalesErrorMessage('Senha de administrador incorreta.');
+      return;
+    }
+    if (!onClearSalesHistory) return;
+    try {
+      setClearSalesStatus('clearing');
+      setClearSalesErrorMessage('');
+      await onClearSalesHistory();
+      setClearSalesStatus('done');
+      setShowClearSalesConfirm(false);
+      setClearSalesPassword('');
+    } catch (err: any) {
+      setClearSalesStatus('idle');
+      setClearSalesErrorMessage(err?.message || 'Erro ao excluir histórico de vendas.');
+    }
+  };
+
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetStatus, setResetStatus] = useState<'idle' | 'resetting' | 'done'>('idle');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
@@ -566,12 +597,15 @@ export default function AdminPanel({
     e.preventDefault();
     if (!srvName || !srvPrice) return;
 
+    const finalCats = srvCategories.length > 0 ? srvCategories : [srvCategory || 'HAIR'];
+
     const newService: Service = {
       id: editingServiceId || `srv-${Date.now()}`,
       name: srvName,
       price: parseFloat(srvPrice),
       durationMinutes: parseInt(srvDuration) || 30,
-      category: srvCategory,
+      category: finalCats[0] || 'HAIR',
+      categories: finalCats,
       description: srvDescription
     };
 
@@ -589,6 +623,8 @@ export default function AdminPanel({
     setSrvPrice('');
     setSrvDuration('30');
     setSrvCategory('HAIR');
+    setSrvCategories(['HAIR']);
+    setNewSrvCustomCat('');
     setSrvDescription('');
   };
 
@@ -603,7 +639,9 @@ export default function AdminPanel({
     setSrvName(s.name);
     setSrvPrice(s.price.toString());
     setSrvDuration(s.durationMinutes.toString());
-    setSrvCategory(s.category);
+    const cats = s.categories && s.categories.length > 0 ? s.categories : [s.category || 'HAIR'];
+    setSrvCategories(cats);
+    setSrvCategory(cats[0] || 'HAIR');
     setSrvDescription(s.description || '');
   };
 
@@ -619,6 +657,8 @@ export default function AdminPanel({
       stock: parseInt(prdStock) || 0,
       minStock: parseInt(prdMinStock) || 5,
       costPrice: parseFloat(prdCostPrice) || 0,
+      category: prdCategories[0] || '',
+      categories: prdCategories,
       description: prdDescription
     };
 
@@ -637,6 +677,8 @@ export default function AdminPanel({
     setPrdStock('10');
     setPrdMinStock('5');
     setPrdCostPrice('0');
+    setPrdCategories([]);
+    setNewPrdCustomCat('');
     setPrdDescription('');
   };
 
@@ -653,6 +695,8 @@ export default function AdminPanel({
     setPrdStock(p.stock.toString());
     setPrdMinStock((p.minStock ?? 5).toString());
     setPrdCostPrice((p.costPrice ?? 0).toString());
+    const pCats = p.categories && p.categories.length > 0 ? p.categories : (p.category ? [p.category] : []);
+    setPrdCategories(pCats);
     setPrdDescription(p.description || '');
   };
 
@@ -1814,7 +1858,7 @@ export default function AdminPanel({
                   </button>
 
                   {(categories && categories.length > 0 ? categories : ['HAIR', 'BEARD', 'COMBO', 'TREATMENT']).map(cat => {
-                    const count = services.filter(s => s.category === cat).length;
+                    const count = services.filter(s => (s.categories && s.categories.length > 0 ? s.categories.includes(cat) : s.category === cat)).length;
                     const isSelected = serviceCategoryFilter === cat;
                     const catLabel = cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamento' : cat;
                     return (
@@ -1848,14 +1892,15 @@ export default function AdminPanel({
                       <th className="pb-2 font-medium">Nome</th>
                       <th className="pb-2 font-medium">Preço Base</th>
                       <th className="pb-2 font-medium">Duração</th>
-                      <th className="pb-2 font-medium">Categoria</th>
+                      <th className="pb-2 font-medium">Categorias</th>
                       <th className="pb-2 text-right">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-850">
                     {services
                       .filter(s => {
-                        const matchesCat = serviceCategoryFilter === 'TODAS' || s.category === serviceCategoryFilter;
+                        const matchesCat = serviceCategoryFilter === 'TODAS' ||
+                          (s.categories && s.categories.length > 0 ? s.categories.includes(serviceCategoryFilter) : s.category === serviceCategoryFilter);
                         const matchesQuery = !serviceSearchTerm || s.name.toLowerCase().includes(serviceSearchTerm.toLowerCase());
                         return matchesCat && matchesQuery;
                       })
@@ -1865,9 +1910,13 @@ export default function AdminPanel({
                           <td className="py-2.5 text-yellow-500 font-mono font-semibold">{formatCurrency(s.price)}</td>
                           <td className="py-2.5 text-zinc-400 font-mono">{s.durationMinutes} min</td>
                           <td className="py-2.5">
-                            <span className="text-[9px] uppercase bg-zinc-900/85 px-2 py-0.5 border border-zinc-800 font-mono rounded">
-                              {s.category}
-                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {(s.categories && s.categories.length > 0 ? s.categories : [s.category]).filter(Boolean).map(c => (
+                                <span key={c} className="text-[9px] uppercase bg-zinc-900/90 text-yellow-400/90 px-1.5 py-0.5 border border-zinc-800 font-mono rounded">
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                           <td className="py-2.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
@@ -1890,7 +1939,8 @@ export default function AdminPanel({
                         </tr>
                       ))}
                     {services.filter(s => {
-                      const matchesCat = serviceCategoryFilter === 'TODAS' || s.category === serviceCategoryFilter;
+                      const matchesCat = serviceCategoryFilter === 'TODAS' ||
+                        (s.categories && s.categories.length > 0 ? s.categories.includes(serviceCategoryFilter) : s.category === serviceCategoryFilter);
                       const matchesQuery = !serviceSearchTerm || s.name.toLowerCase().includes(serviceSearchTerm.toLowerCase());
                       return matchesCat && matchesQuery;
                     }).length === 0 && (
@@ -1929,11 +1979,21 @@ export default function AdminPanel({
                   <tbody className="divide-y divide-zinc-850">
                     {products.map(p => {
                       const isLowStock = p.stock <= (p.minStock ?? 5);
+                      const pCats = p.categories && p.categories.length > 0 ? p.categories : (p.category ? [p.category] : []);
                       return (
                         <tr key={p.id} className="hover:bg-zinc-900/10">
                           <td className="py-2.5">
                             <p className="font-bold text-white leading-none">{p.name}</p>
                             <p className="text-[10px] text-zinc-500 mt-0.5">{p.description}</p>
+                            {pCats.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {pCats.map(cat => (
+                                  <span key={cat} className="text-[8px] uppercase bg-zinc-900 text-amber-400/90 px-1 py-0.2 border border-zinc-800 font-mono rounded">
+                                    {cat}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5">
                             <p className="text-yellow-500 font-mono font-semibold">{formatCurrency(p.price)}</p>
@@ -2220,16 +2280,92 @@ export default function AdminPanel({
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Categoria</label>
-                  <select
-                    value={srvCategory}
-                    onChange={(e) => setSrvCategory(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">
+                      Categorias do Serviço (Múltiplas Seleções)
+                    </label>
+                    <span className="text-[9px] text-amber-400 font-mono">
+                      {srvCategories.length} selecionada(s)
+                    </span>
+                  </div>
+                  {/* Category Pills Selector */}
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-950 border border-zinc-800 rounded-lg min-h-[42px] items-center">
+                    {categories.map(cat => {
+                      const isSelected = srvCategories.includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              if (srvCategories.length > 1) {
+                                setSrvCategories(srvCategories.filter(c => c !== cat));
+                              }
+                            } else {
+                              setSrvCategories([...srvCategories, cat]);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition cursor-pointer flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-yellow-500 text-black shadow-xs'
+                              : 'bg-zinc-900 hover:bg-zinc-850 text-zinc-400 border border-zinc-800'
+                          }`}
+                        >
+                          <span>{isSelected ? '✓ ' : '＋ '}{cat}</span>
+                        </button>
+                      );
+                    })}
+                    {/* Custom Category Tags added by user */}
+                    {srvCategories.filter(c => !categories.includes(c)).map(customCat => (
+                      <span
+                        key={customCat}
+                        className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase bg-amber-500 text-black flex items-center gap-1"
+                      >
+                        ✓ {customCat}
+                        <button
+                          type="button"
+                          onClick={() => setSrvCategories(srvCategories.filter(c => c !== customCat))}
+                          className="hover:text-red-950 text-xs font-black cursor-pointer ml-0.5"
+                        >
+                          ×
+                        </button>
+                      </span>
                     ))}
-                  </select>
+                  </div>
+
+                  {/* Add New Custom Category Input */}
+                  <div className="flex gap-1.5 mt-1.5">
+                    <input
+                      type="text"
+                      value={newSrvCustomCat}
+                      onChange={(e) => setNewSrvCustomCat(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = newSrvCustomCat.trim().toUpperCase();
+                          if (val && !srvCategories.includes(val)) {
+                            setSrvCategories([...srvCategories, val]);
+                            setNewSrvCustomCat('');
+                          }
+                        }
+                      }}
+                      placeholder="Criar nova categoria..."
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] text-white font-mono uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newSrvCustomCat.trim().toUpperCase();
+                        if (val && !srvCategories.includes(val)) {
+                          setSrvCategories([...srvCategories, val]);
+                          setNewSrvCustomCat('');
+                        }
+                      }}
+                      className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-mono rounded cursor-pointer"
+                    >
+                      ＋ Adicionar
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">Descrição rápida</label>
@@ -2328,6 +2464,92 @@ export default function AdminPanel({
                       placeholder="5"
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                     />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wide">
+                      Categorias do Produto (Múltiplas Seleções)
+                    </label>
+                    <span className="text-[9px] text-amber-400 font-mono">
+                      {prdCategories.length} selecionada(s)
+                    </span>
+                  </div>
+                  {/* Category Pills Selector */}
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-950 border border-zinc-800 rounded-lg min-h-[42px] items-center">
+                    {['POMADAS', 'BARBA', 'CABELO', 'BEBIDAS', 'CUIDADOS', 'ACESSORIOS', ...categories.filter(c => !['POMADAS', 'BARBA', 'CABELO', 'BEBIDAS', 'CUIDADOS', 'ACESSORIOS'].includes(c))].map(cat => {
+                      const isSelected = prdCategories.includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setPrdCategories(prdCategories.filter(c => c !== cat));
+                            } else {
+                              setPrdCategories([...prdCategories, cat]);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition cursor-pointer flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-yellow-500 text-black shadow-xs'
+                              : 'bg-zinc-900 hover:bg-zinc-850 text-zinc-400 border border-zinc-800'
+                          }`}
+                        >
+                          <span>{isSelected ? '✓ ' : '＋ '}{cat}</span>
+                        </button>
+                      );
+                    })}
+                    {/* Custom Category Tags added by user */}
+                    {prdCategories.filter(c => !['POMADAS', 'BARBA', 'CABELO', 'BEBIDAS', 'CUIDADOS', 'ACESSORIOS', ...categories].includes(c)).map(customCat => (
+                      <span
+                        key={customCat}
+                        className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase bg-amber-500 text-black flex items-center gap-1"
+                      >
+                        ✓ {customCat}
+                        <button
+                          type="button"
+                          onClick={() => setPrdCategories(prdCategories.filter(c => c !== customCat))}
+                          className="hover:text-red-950 text-xs font-black cursor-pointer ml-0.5"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Add New Custom Category Input */}
+                  <div className="flex gap-1.5 mt-1.5">
+                    <input
+                      type="text"
+                      value={newPrdCustomCat}
+                      onChange={(e) => setNewPrdCustomCat(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = newPrdCustomCat.trim().toUpperCase();
+                          if (val && !prdCategories.includes(val)) {
+                            setPrdCategories([...prdCategories, val]);
+                            setNewPrdCustomCat('');
+                          }
+                        }
+                      }}
+                      placeholder="Criar nova categoria para produto..."
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] text-white font-mono uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newPrdCustomCat.trim().toUpperCase();
+                        if (val && !prdCategories.includes(val)) {
+                          setPrdCategories([...prdCategories, val]);
+                          setNewPrdCustomCat('');
+                        }
+                      }}
+                      className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-mono rounded cursor-pointer"
+                    >
+                      ＋ Adicionar
+                    </button>
                   </div>
                 </div>
                 <div>
@@ -3386,6 +3608,14 @@ export default function AdminPanel({
               handleBackupExport={handleBackupExport}
               handleBackupImport={handleBackupImport}
               isRestoringBackup={isRestoringBackup}
+              onClearSalesHistory={onClearSalesHistory}
+              showClearSalesConfirm={showClearSalesConfirm}
+              setShowClearSalesConfirm={setShowClearSalesConfirm}
+              clearSalesPassword={clearSalesPassword}
+              setClearSalesPassword={setClearSalesPassword}
+              clearSalesStatus={clearSalesStatus}
+              clearSalesErrorMessage={clearSalesErrorMessage}
+              handleClearSalesHistory={handleClearSalesHistory}
               onResetDatabase={onResetDatabase}
               showResetConfirm={showResetConfirm}
               setShowResetConfirm={setShowResetConfirm}

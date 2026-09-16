@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { getSavedState, saveState } from './data';
 import { User, UserRole, Service, Product, LoyaltyPlan, CustomerSubscription, Appointment, Comanda, SystemParameters } from './types';
-import { loadStateFromFirestore, saveDocumentToFirestore, deleteDocumentFromFirestore, clearDatabaseToProduction, subscribeToFirestoreState } from './firebase';
+import { loadStateFromFirestore, saveDocumentToFirestore, deleteDocumentFromFirestore, clearDatabaseToProduction, clearSalesHistoryFromFirestore, subscribeToFirestoreState } from './firebase';
 import LoginScreen from './components/LoginScreen';
 import AdminPanel from './components/AdminPanel';
 import BarberPanel from './components/BarberPanel';
@@ -540,6 +540,19 @@ export default function App() {
                       coupons={state.coupons || []}
                       creditTransactions={state.creditTransactions || []}
                       onUpdateState={handleUpdateState}
+                      onClearSalesHistory={async () => {
+                        setIsLoadingDb(true);
+                        await clearSalesHistoryFromFirestore();
+                        setState(prev => ({
+                          ...prev,
+                          comandas: [],
+                          appointments: [],
+                          supplyTransactions: [],
+                          npsFeedbacks: [],
+                          creditTransactions: []
+                        }));
+                        setIsLoadingDb(false);
+                      }}
                       onResetDatabase={async () => {
                         setIsLoadingDb(true);
                         await clearDatabaseToProduction();

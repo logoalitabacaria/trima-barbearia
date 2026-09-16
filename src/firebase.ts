@@ -368,6 +368,32 @@ export async function deleteDocumentFromFirestore(collectionName: string, id: st
   }
 }
 
+// Clear only sales history, comandas, appointments and cashier transactions while preserving services, products, users and parameters
+export async function clearSalesHistoryFromFirestore() {
+  const collectionsToClear = ['comandas', 'appointments', 'supplyTransactions', 'npsFeedbacks', 'creditTransactions'];
+  for (const colName of collectionsToClear) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, colName, d.id));
+      }
+    } catch (e) {
+      console.error(`Error clearing collection ${colName}:`, e);
+    }
+  }
+
+  // Also clear comandas and appointments stored in localStorage if any
+  try {
+    localStorage.removeItem('logo_ali_b2_comandas');
+    localStorage.removeItem('logo_ali_b2_appointments');
+    localStorage.removeItem('logo_ali_b2_supplyTransactions');
+    localStorage.removeItem('logo_ali_b2_npsFeedbacks');
+    localStorage.removeItem('logo_ali_b2_creditTransactions');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 // Clear all simulation records and reset Firestore + local state to clean production defaults
 export async function clearDatabaseToProduction() {
   const collectionsToClear = ['users', 'barberDetails', 'services', 'products', 'plans', 'subscriptions', 'appointments', 'comandas', 'supplyTransactions'];

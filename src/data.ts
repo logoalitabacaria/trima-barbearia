@@ -53,6 +53,34 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   enableCustomerCredit: true,
   enableCustomerDebt: true,
 
+  // Customer Portal Visibility Flags
+  portalShowGuestBanner: true,
+  portalShowWelcomeHeader: true,
+  portalShowBannersCarousel: true,
+  portalShowAdvantagesCollapsible: true,
+  portalShowReferralProgram: true,
+  portalShowPromotions: true,
+  portalShowLoyaltyCard: true,
+  portalShowSubscriptionsSection: true,
+  portalShowPackageBuilder: true,
+  portalShowSchedulingFlow: true,
+  portalShowServiceSearch: true,
+  portalShowServiceCategories: true,
+  portalShowAppointmentsHistory: true,
+  portalShowNpsSurvey: true,
+  portalShowContactFooter: true,
+
+  // Customer Portal Section Titles & Subtitles
+  customerPortalAgendarTitle: 'Agende Seu Atendimento',
+  customerPortalAgendarSubtitle: 'Escolha os serviços desejados, seu profissional de preferência e o melhor horário.',
+  customerPortalSubscriptionsTitle: 'Clube de Assinatura Recorrente & Descontos',
+  customerPortalSubscriptionsSubtitle: 'Economize todo mês com planos mensais exclusivos ou monte seu próprio pacote com vantagens.',
+  customerPortalPackageTitle: 'Monte Seu Pacote Mensal de Cortes & Barba',
+  customerPortalPackageSubtitle: 'Selecione quais serviços você deseja receber ao longo do mês:',
+  customerPortalAppointmentsTitle: 'Meus Agendamentos Recentes',
+  customerPortalAppointmentsSubtitle: 'Acompanhe o status e histórico dos seus atendimentos agendados.',
+  customerPortalBlockOrder: ['banners', 'promos', 'scheduling', 'subscriptions', 'appointments', 'nps', 'contact'],
+
   // Customer Portal Texts & Banners
   customerPortalWelcomeText: "Seja bem-vindo ao Trima Studio! Agende seu horário com os melhores profissionais da cidade.",
   customerPortalAnnouncementText: "⚡ Atendimento com agendamento online 24h ou por ordem de chegada no balcão!",

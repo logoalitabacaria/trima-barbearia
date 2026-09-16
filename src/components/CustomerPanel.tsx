@@ -116,7 +116,7 @@ export default function CustomerPanel({
 
   // Search filter for services
   const [serviceSearch, setServiceSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('TODOS');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   // New Booking State (supports multiple service selection)
   const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
@@ -464,14 +464,26 @@ export default function CustomerPanel({
 
   const myAppointments = appointments.filter(a => a.customerId === currentCustomer.id);
 
+  // Extract all categories from services (supporting multiple categories per service, excluding any automatic 'Todos')
+  const rawCategories = services.flatMap(s => (s.categories && s.categories.length > 0 ? s.categories : [s.category || 'Outros']));
+  const categoriesList = Array.from(new Set(rawCategories)).filter(c => Boolean(c) && c.toUpperCase() !== 'TODOS' && c.toUpperCase() !== 'TODAS');
+
+  // Active selected category defaults to the first category if none or invalid is selected
+  const activeSelectedCategory = (selectedCategory && categoriesList.includes(selectedCategory))
+    ? selectedCategory
+    : (categoriesList[0] || '');
+
   // Filtered Services based on search & category
   const filteredServices = services.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(serviceSearch.toLowerCase()) || (s.description && s.description.toLowerCase().includes(serviceSearch.toLowerCase()));
-    const matchesCategory = selectedCategory === 'TODOS' || (s.category || 'Outros') === selectedCategory;
+    const matchesSearch = !serviceSearch.trim() ||
+      s.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
+      (s.description && s.description.toLowerCase().includes(serviceSearch.toLowerCase()));
+
+    const sCats = s.categories && s.categories.length > 0 ? s.categories : [s.category || 'Outros'];
+    const matchesCategory = !activeSelectedCategory || sCats.includes(activeSelectedCategory);
+
     return matchesSearch && matchesCategory;
   });
-
-  const categoriesList = ['TODOS', ...Array.from(new Set(services.map(s => s.category || 'Outros')))];
 
   return (
     <div className={`w-full max-w-3xl mx-auto space-y-5 text-left font-sans p-3 sm:p-5 pb-24 rounded-3xl shadow-sm border transition-colors overflow-x-hidden ${
@@ -479,7 +491,7 @@ export default function CustomerPanel({
     }`}>
       
       {/* GUEST BANNER NOTIFICATION */}
-      {isGuestMode && (
+      {isGuestMode && parameters.portalShowGuestBanner !== false && (
         <div className="bg-amber-500 text-slate-950 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-2.5 font-mono shadow-md border border-amber-400">
           <div className="flex items-center gap-2 text-xs font-bold">
             <Sparkles className="w-4 h-4 shrink-0" />
@@ -496,6 +508,7 @@ export default function CustomerPanel({
       )}
 
       {/* Top Banner Greeting - Clean High Contrast Light/Dark Design */}
+      {parameters.portalShowWelcomeHeader !== false && (
       <div className={`p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm border ${
         isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900'
       }`}>
@@ -564,9 +577,10 @@ export default function CustomerPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* BANNERS PROMOCIONAIS CONFIGURADOS PELO ADMINISTRADOR (CARROSSEL & FIXOS) */}
-      {parameters.customerPortalBanners && parameters.customerPortalBanners.filter(b => b.isActive).length > 0 && (() => {
+      {parameters.portalShowBannersCarousel !== false && parameters.customerPortalBanners && parameters.customerPortalBanners.filter(b => b.isActive).length > 0 && (() => {
         const activeBanners = parameters.customerPortalBanners.filter(b => b.isActive);
         const carouselBanners = activeBanners.filter(b => b.displayMode === 'CAROUSEL' || !b.displayMode);
         const staticBanners = activeBanners.filter(b => b.displayMode === 'STATIC');
@@ -683,7 +697,7 @@ export default function CustomerPanel({
       })()}
 
       {/* BLUCO COMPACTO COLLAPSÍVEL DE VANTAGENS, PROMOÇÕES E FIDELIDADE */}
-      {(parameters.enableReferralProgram !== false || (parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.some(p => p.isActive)) || parameters.enableLoyalty !== false) && (
+      {parameters.portalShowAdvantagesCollapsible !== false && (parameters.enableReferralProgram !== false || (parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.some(p => p.isActive)) || parameters.enableLoyalty !== false) && (
         <div className={`rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/90'}`}>
           <button
             type="button"
@@ -707,7 +721,7 @@ export default function CustomerPanel({
           {showPromosSection && (
             <div className="p-4 pt-1 space-y-4 border-t border-slate-100 dark:border-slate-800/80">
               {/* PROGRAMA DE INDICAÇÃO - INDIQUE E GANHE */}
-              {parameters.enableReferralProgram !== false && (
+              {parameters.portalShowReferralProgram !== false && parameters.enableReferralProgram !== false && (
                 <div className={`p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border ${
                   isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'
                 }`}>
@@ -758,7 +772,7 @@ export default function CustomerPanel({
               )}
 
               {/* PROMOÇÕES ATIVAS DA BARBEARIA */}
-              {parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.filter(p => p.isActive).length > 0 && (
+              {parameters.portalShowPromotions !== false && parameters.enablePromotions !== false && parameters.promotions && parameters.promotions.filter(p => p.isActive).length > 0 && (
                 <div className={`p-4 rounded-xl space-y-2 border ${
                   isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'
                 }`}>
@@ -793,7 +807,7 @@ export default function CustomerPanel({
               )}
 
               {/* PROGRAMA DE FIDELIDADE */}
-              {parameters.enableLoyalty !== false && (() => {
+              {parameters.portalShowLoyaltyCard !== false && parameters.enableLoyalty !== false && (() => {
                 const points = currentCustomer.loyaltyPoints || 0;
                 const minToRedeem = parameters.loyaltyMinPointsRedeem || 100;
                 const rewardVal = parameters.loyaltyRewardValue || 15;
@@ -851,58 +865,43 @@ export default function CustomerPanel({
       )}
 
       {/* Main Tab Switcher */}
-      <div className={`grid grid-cols-3 gap-1.5 p-1.5 rounded-xl border w-full max-w-full ${
-        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200/60 border-slate-300/80'
-      }`}>
-        <button
-          onClick={() => setActiveTab('agendar')}
-          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
-            activeTab === 'agendar'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span className="truncate">
-            <span className="sm:hidden">Agendar</span>
-            <span className="hidden sm:inline">1. Agendar</span>
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('assinatura')}
-          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
-            activeTab === 'assinatura'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span className="truncate">
-            <span className="sm:hidden">Assinatura</span>
-            <span className="hidden sm:inline">2. Assinatura</span>
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('historico')}
-          className={`w-full min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
-            activeTab === 'historico'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-              : isDarkMode
-              ? 'text-slate-300 hover:text-white hover:bg-slate-800'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span className="truncate">
-            <span className="sm:hidden">Reservas ({myAppointments.length})</span>
-            <span className="hidden sm:inline">3. Reservas ({myAppointments.length})</span>
-          </span>
-        </button>
-      </div>
+      {(() => {
+        const portalTabs = [
+          { id: 'agendar' as const, name: 'Agendar', label: '1. Agendar', icon: Calendar, enabled: parameters.portalShowSchedulingFlow !== false },
+          { id: 'assinatura' as const, name: 'Assinatura', label: '2. Assinatura', icon: Award, enabled: parameters.portalShowSubscriptionsSection !== false },
+          { id: 'historico' as const, name: `Reservas (${myAppointments.length})`, label: `3. Reservas (${myAppointments.length})`, icon: Clock, enabled: parameters.portalShowAppointmentsHistory !== false },
+        ].filter(t => t.enabled);
+
+        if (portalTabs.length <= 1) return null;
+
+        return (
+          <div className="flex gap-1.5 p-1.5 rounded-xl border w-full max-w-full overflow-x-auto bg-slate-200/60 dark:bg-slate-900 border-slate-300/80 dark:border-slate-800">
+            {portalTabs.map(tab => {
+              const TabIcon = tab.icon;
+              const isSelected = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 min-w-0 py-2.5 sm:py-3 px-1.5 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold font-mono uppercase transition cursor-pointer flex items-center justify-center gap-1 sm:gap-2 ${
+                    isSelected
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                      : isDarkMode
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  }`}
+                >
+                  <TabIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="truncate">
+                    <span className="sm:hidden">{tab.name}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* TAB 1: INTUITIVE 3-STEP BOOKING FLOW */}
       {activeTab === 'agendar' && (
@@ -1066,39 +1065,45 @@ export default function CustomerPanel({
               </div>
 
               {/* Filter & Search Bar */}
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="Buscar serviço por nome..."
-                    value={serviceSearch}
-                    onChange={e => setServiceSearch(e.target.value)}
-                    className={`w-full rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-400' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400'
-                    }`}
-                  />
-                </div>
+              {(parameters.portalShowServiceSearch !== false || parameters.portalShowServiceCategories !== false) && (
+                <div className="space-y-2">
+                  {parameters.portalShowServiceSearch !== false && (
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        placeholder="Buscar serviço por nome..."
+                        value={serviceSearch}
+                        onChange={e => setServiceSearch(e.target.value)}
+                        className={`w-full rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 border ${
+                          isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-400' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400'
+                        }`}
+                      />
+                    </div>
+                  )}
 
-                <div className="flex gap-1 overflow-x-auto pb-1 text-[10px] font-mono scrollbar-none">
-                  {categoriesList.map(cat => (
-                    <button
-                      type="button"
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-2.5 py-1 rounded-lg uppercase whitespace-nowrap transition cursor-pointer font-bold ${
-                        selectedCategory === cat
-                          ? 'bg-amber-500 text-slate-950'
-                          : isDarkMode
-                          ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {cat === 'HAIR' ? 'Cabelo' : cat === 'BEARD' ? 'Barba' : cat === 'COMBO' ? 'Combos' : cat === 'TREATMENT' ? 'Tratamentos' : cat}
-                    </button>
-                  ))}
+                  {parameters.portalShowServiceCategories !== false && categoriesList.length > 0 && (
+                    <div className="flex gap-1 overflow-x-auto pb-1 text-[10px] font-mono scrollbar-none">
+                      {categoriesList.map(cat => (
+                        <button
+                          type="button"
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          className={`px-2.5 py-1 rounded-lg uppercase whitespace-nowrap transition cursor-pointer font-bold ${
+                            activeSelectedCategory === cat
+                              ? 'bg-amber-500 text-slate-950 shadow-xs'
+                              : isDarkMode
+                              ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamentos' : cat}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Services List Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
@@ -1578,17 +1583,25 @@ export default function CustomerPanel({
       )}
 
       {/* TAB 2: SUBSCRIPTIONS & CLUB BENEFITS */}
-      {activeTab === 'assinatura' && (
+      {activeTab === 'assinatura' && parameters.portalShowSubscriptionsSection !== false && (
         <div id="secao-clube-vip" className="space-y-6">
           <div className={`p-6 rounded-2xl text-left space-y-2 shadow-sm border ${
             isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900'
           }`}>
             <h3 className="text-base font-extrabold text-amber-500 font-mono flex items-center gap-2">
               <Award className="w-5 h-5 text-amber-500" />
-              Clube de Assinatura Recorrente & Descontos
+              {parameters.customerPortalSubscriptionsTitle ? (
+                formatPortalText(parameters.customerPortalSubscriptionsTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+              ) : (
+                'Clube de Assinatura Recorrente & Descontos'
+              )}
             </h3>
             <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-              Monte seu plano mensal sob medida. Quanto mais serviços adicionar ao seu pacote, maior é o desconto automático concedido!
+              {parameters.customerPortalSubscriptionsSubtitle ? (
+                formatPortalText(parameters.customerPortalSubscriptionsSubtitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+              ) : (
+                'Monte seu plano mensal sob medida. Adicione os serviços desejados ao seu pacote mensal com praticidade.'
+              )}
             </p>
           </div>
 
@@ -1630,15 +1643,23 @@ export default function CustomerPanel({
             }`}>
               <div>
                 <h4 className={`text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                  🛠️ Monte Seu Pacote Mensal de Cortes & Barba
+                  {parameters.customerPortalPackageTitle ? (
+                    formatPortalText(parameters.customerPortalPackageTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                  ) : (
+                    '🛠️ Monte Seu Pacote Mensal de Cortes & Barba'
+                  )}
                 </h4>
                 <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                  Selecione quais serviços você deseja receber ao longo do mês:
+                  {parameters.customerPortalPackageSubtitle ? (
+                    formatPortalText(parameters.customerPortalPackageSubtitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                  ) : (
+                    'Selecione quais serviços você deseja receber ao longo do mês:'
+                  )}
                 </p>
               </div>
 
-              {/* Tabela de Descontos Progressivos ou Alerta de Desativação */}
-              {isQuantityDiscountEnabled ? (
+              {/* Tabela de Descontos Progressivos - Exibida APENAS se ativado nas configurações */}
+              {isQuantityDiscountEnabled && (
                 <div className={`p-4 rounded-xl border ${
                   isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
                 }`}>
@@ -1667,24 +1688,12 @@ export default function CustomerPanel({
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
-                }`}>
-                  <span className="text-lg">ℹ️</span>
-                  <div className="text-xs">
-                    <p className="font-semibold text-amber-500">Descontos automáticos por quantidade desativados</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Os serviços selecionados serão cobrados pelo valor nominal da tabela, sem desconto percentual por volume.
-                    </p>
-                  </div>
-                </div>
               )}
 
-              {/* Seleção de Serviços por Categoria */}
+              {/* Seleção de Serviços por Categoria (Multi-categoria suportada) */}
               <div className="space-y-4">
-                {categoriesList.filter(c => c !== 'TODOS').map(cat => {
-                  const catServices = services.filter(s => (s.category || 'Outros') === cat);
+                {categoriesList.map(cat => {
+                  const catServices = services.filter(s => (s.categories && s.categories.length > 0 ? s.categories.includes(cat) : (s.category || 'Outros') === cat));
                   if (catServices.length === 0) return null;
 
                   return (
@@ -1739,8 +1748,12 @@ export default function CustomerPanel({
               }`}>
                 <div className="space-y-1 text-xs font-mono">
                   <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Serviços Selecionados: <strong className={isDarkMode ? 'text-white' : 'text-slate-900'}>{totalQuantity}</strong></p>
-                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Valor de Tabela: <span className="line-through text-slate-400">{formatCurrency(rawTotalCost)}</span></p>
-                  <p className="text-emerald-500 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
+                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>
+                    Valor Total: <span className={discountAmount > 0 && isQuantityDiscountEnabled ? "line-through text-slate-400" : (isDarkMode ? "text-white font-bold" : "text-slate-900 font-bold")}>{formatCurrency(rawTotalCost)}</span>
+                  </p>
+                  {discountAmount > 0 && isQuantityDiscountEnabled && (
+                    <p className="text-emerald-500 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
+                  )}
                 </div>
                 <div className="text-left md:text-right">
                   <span className={`text-[10px] uppercase font-mono font-bold block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Mensalidade Total</span>
@@ -1766,12 +1779,16 @@ export default function CustomerPanel({
       )}
 
       {/* TAB 3: BOOKINGS HISTORY & CANCELLATION */}
-      {activeTab === 'historico' && (
+      {activeTab === 'historico' && parameters.portalShowAppointmentsHistory !== false && (
         <div id="secao-reservas" className="space-y-4">
           <h3 className={`text-xs font-bold font-mono uppercase tracking-wider block text-left ${
             isDarkMode ? 'text-slate-400' : 'text-slate-600'
           }`}>
-            Histórico das Suas Marcações
+            {parameters.customerPortalAppointmentsTitle ? (
+              formatPortalText(parameters.customerPortalAppointmentsTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+            ) : (
+              'Histórico das Suas Marcações'
+            )}
           </h3>
 
           {myAppointments.length === 0 ? (
@@ -1904,7 +1921,7 @@ export default function CustomerPanel({
       )}
 
       {/* NPS SURVEY CARD (Escala 1 a 5) */}
-      {parameters.enableNPS !== false && (
+      {parameters.portalShowNpsSurvey !== false && parameters.enableNPS !== false && (
         <div className={`p-6 rounded-2xl space-y-4 shadow-sm text-left border ${
           isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
         }`}>
@@ -2019,6 +2036,8 @@ export default function CustomerPanel({
       )}
 
       {/* LOCALIZAÇÃO (GOOGLE MAPS) E REDES SOCIAIS */}
+      {parameters.portalShowContactFooter !== false && (
+      <>
       <div className={`p-5 rounded-2xl space-y-4 shadow-sm text-left border ${
         isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
       }`}>
@@ -2119,6 +2138,8 @@ export default function CustomerPanel({
           </p>
         )}
       </div>
+      </>
+      )}
 
       {/* MENU DE FACILIDADES DE ACESSO FIXO NA PARTE INFERIOR DA TELA */}
       <div className={`fixed bottom-0 left-0 right-0 z-50 sm:hidden backdrop-blur-md border-t py-2.5 px-3 flex justify-around items-center transition-colors ${

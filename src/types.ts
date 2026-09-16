@@ -141,6 +141,7 @@ export interface Service {
   durationMinutes: number;
   description: string;
   category: string;
+  categories?: string[]; // Multiple categories support
   isActive?: boolean;
   benefits?: string;
   imageUrl?: string;
@@ -153,6 +154,8 @@ export interface Product {
   price: number;
   stock: number;
   description: string;
+  category?: string;
+  categories?: string[]; // Multiple categories support
   minStock?: number; // Minimum stock threshold for critical alert
   costPrice?: number; // Purchase cost price for margin & ABC analysis
 }
@@ -366,9 +369,36 @@ export interface SystemParameters {
   customerPortalSchedulingInfoText?: string;
   customerPortalAnnouncementText?: string;
   customerPortalClubBannerText?: string;
+  customerPortalAgendarTitle?: string;
   customerPortalAgendarSubtitle?: string;
+  customerPortalSubscriptionsTitle?: string;
+  customerPortalSubscriptionsSubtitle?: string;
+  customerPortalPackageTitle?: string;
+  customerPortalPackageSubtitle?: string;
+  customerPortalAppointmentsTitle?: string;
+  customerPortalAppointmentsSubtitle?: string;
   customerPortalFooterText?: string;
   customerPortalBanners?: CustomerBanner[];
+
+  // Customer Portal Section Visibility Controls (Allows admin to hide/show any section)
+  portalShowGuestBanner?: boolean;
+  portalShowWelcomeHeader?: boolean;
+  portalShowBannersCarousel?: boolean;
+  portalShowAdvantagesCollapsible?: boolean;
+  portalShowReferralProgram?: boolean;
+  portalShowPromotions?: boolean;
+  portalShowLoyaltyCard?: boolean;
+  portalShowSubscriptionsSection?: boolean;
+  portalShowPackageBuilder?: boolean;
+  portalShowSchedulingFlow?: boolean;
+  portalShowServiceSearch?: boolean;
+  portalShowServiceCategories?: boolean;
+  portalShowAppointmentsHistory?: boolean;
+  portalShowNpsSurvey?: boolean;
+  portalShowContactFooter?: boolean;
+
+  // Customer Portal Block Order customization (e.g. ['banners', 'promos', 'scheduling', 'subscriptions', 'appointments', 'nps', 'contact'])
+  customerPortalBlockOrder?: string[];
 
   // Social Networks & Maps Links
   instagramUrl?: string;
