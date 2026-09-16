@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Scissors, Star, Check, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon } from 'lucide-react';
+import { Calendar, Clock, Scissors, Star, Check, CheckCircle2, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon } from 'lucide-react';
 import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner, Comanda } from '../types';
 import { buildWhatsAppReminderUrl, formatPortalText } from '../utils/helpers';
 import { playAppointmentScheduledSound, playSubscriptionActivatedSound } from '../utils/soundEffects';
@@ -153,7 +153,20 @@ export default function CustomerPanel({
     ? plans.find(p => p.id === activeSubscription.planId)
     : null;
 
+  const pendingSubscription = subscriptions.find(
+    s => s.customerId === currentCustomer.id && !s.isActive && (s.status === 'PENDING_PAYMENT' || !s.status)
+  );
+  const pendingPlan = pendingSubscription
+    ? plans.find(p => p.id === pendingSubscription.planId)
+    : null;
+
   const [useSubscriptionForBooking, setUseSubscriptionForBooking] = useState<boolean>(true);
+
+  // Subscription view toggle: 'plans' (planos prontos cadastrados) ou 'custom' (monte seu pacote)
+  const isQuantityDiscountEnabled: boolean = parameters.enableQuantitySubscriptionDiscount !== false;
+  const [subViewMode, setSubViewMode] = useState<'plans' | 'custom'>(
+    !isQuantityDiscountEnabled || (plans && plans.length > 0) ? 'plans' : 'custom'
+  );
 
   // Subscription Builder State
   const [selectedServiceQuantities, setSelectedServiceQuantities] = useState<Record<string, number>>({});
@@ -172,8 +185,6 @@ export default function CustomerPanel({
   const totalQuantity: number = (Object.values(selectedServiceQuantities) as number[]).reduce((acc: number, q: number) => acc + q, 0);
   const rawTotalCost: number = services.reduce((acc: number, s: Service) => acc + (s.price * ((selectedServiceQuantities[s.id] as number) || 0)), 0);
 
-  const isQuantityDiscountEnabled: boolean = parameters.enableQuantitySubscriptionDiscount !== false;
-
   const getDiscountPercentage = (count: number): number => {
     if (!isQuantityDiscountEnabled) return 0;
     if (count < 2) return 0;
@@ -186,6 +197,75 @@ export default function CustomerPanel({
   const discountPct: number = getDiscountPercentage(totalQuantity);
   const discountAmount: number = rawTotalCost * discountPct;
   const finalMonthlyCost: number = rawTotalCost - discountAmount;
+
+  const handleSubscribeToPlan = (plan: LoyaltyPlan) => {
+    if (isGuestMode) {
+      if (onOpenLoginModal) onOpenLoginModal();
+      else alert('Por favor, faça login ou crie sua conta para assinar o Clube VIP.');
+      return;
+    }
+
+    const confirmMsg = `Deseja assinar o plano "${plan.name}" por ${formatCurrency(plan.priceMonthly)}/mês?\n\nUma comanda de pagamento será gerada no Caixa. Seus benefícios VIP serão liberados assim que o pagamento for registrado pela equipe da barbearia.`;
+    if (!confirm(confirmMsg)) return;
+
+    const today = new Date();
+    const end = new Date();
+    end.setDate(today.getDate() + 30);
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+    const newSubId = `sub-${Date.now()}`;
+    const newSubscription: CustomerSubscription = {
+      id: newSubId,
+      customerId: currentCustomer.id,
+      planId: plan.id,
+      startDate: formatDate(today),
+      endDate: formatDate(end),
+      servicesRemaining: plan.isUnlimited ? 999 : (plan.servicesIncludedCount || 4),
+      isActive: false, // Inativo até o Caixa confirmar o pagamento
+      status: 'PENDING_PAYMENT',
+      selectedServiceIds: plan.includedServiceIds || [],
+      totalPriceMonthly: plan.priceMonthly,
+      discountPercentage: 0
+    };
+
+    const newComanda: Comanda = {
+      id: `cmd-sub-${Date.now()}`,
+      customerId: currentCustomer.id,
+      customerName: currentCustomer.name,
+      barberId: 'SYSTEM',
+      barberName: 'Sistema / Clube VIP',
+      status: 'OPEN',
+      readyForPayment: true,
+      items: [
+        {
+          id: `item-sub-${Date.now()}`,
+          name: `Assinatura: ${plan.name}`,
+          unitPrice: plan.priceMonthly,
+          quantity: 1,
+        }
+      ],
+      subtotal: plan.priceMonthly,
+      discount: 0,
+      total: plan.priceMonthly,
+      createdAt: new Date().toISOString(),
+      dispatchedAt: new Date().toISOString(),
+      notes: `[ASSINATURA_PENDENTE] Ativação de Plano "${plan.name}" para o cliente ${currentCustomer.name} (Sub ID: ${newSubId})`
+    };
+
+    onUpdateState('subscriptions', [...subscriptions, newSubscription]);
+    onUpdateState('comandas', [...comandas, newComanda]);
+    playSubscriptionActivatedSound();
+    alert(`🎉 Sua solicitação para o plano "${plan.name}" foi registrada!\n\nUma comanda no valor de ${formatCurrency(plan.priceMonthly)} foi encaminhada ao Caixa da barbearia. Seus créditos VIP estarão ativos assim que o pagamento for registrado.`);
+  };
+
+  const handleCancelPendingSubscription = (subId: string) => {
+    if (confirm('Deseja cancelar esta solicitação de assinatura pendente?')) {
+      onUpdateState('subscriptions', subscriptions.filter(s => s.id !== subId));
+      if (comandas && comandas.length > 0) {
+        onUpdateState('comandas', comandas.filter(c => !c.notes?.includes(subId)));
+      }
+    }
+  };
 
   const handleCreateCustomSubscription = () => {
     if (isGuestMode) {
@@ -369,8 +449,25 @@ export default function CustomerPanel({
 
     let isSub = false;
     if (useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0) {
-      // Validate specific services included in customer's package
-      if (activeSubscription.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0) {
+      const isUnlimitedPlan = activeSubscribedPlan?.isUnlimited === true || activeSubscription.servicesRemaining >= 900;
+
+      if (isUnlimitedPlan) {
+        if (activeSubscribedPlan?.includedServiceIds && activeSubscribedPlan.includedServiceIds.length > 0) {
+          if (!activeSubscribedPlan.includedServiceIds.includes(primaryService.id)) {
+            alert(`O serviço "${primaryService.name}" não está incluso no seu plano ilimitado (${activeSubscribedPlan.name}). Desmarque a opção "Agendar via Assinatura" para agendar com pagamento avulso.`);
+            return;
+          }
+        }
+        isSub = true;
+      } else if (activeSubscribedPlan) {
+        if (activeSubscribedPlan.includedServiceIds && activeSubscribedPlan.includedServiceIds.length > 0) {
+          if (!activeSubscribedPlan.includedServiceIds.includes(primaryService.id)) {
+            alert(`O serviço "${primaryService.name}" não está incluso no seu plano (${activeSubscribedPlan.name}). Desmarque a opção "Agendar via Assinatura" para agendar com pagamento avulso.`);
+            return;
+          }
+        }
+        isSub = true;
+      } else if (activeSubscription.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0) {
         const totalAllowedForService = activeSubscription.selectedServiceIds.filter(id => id === primaryService.id).length;
         const usedCountForService = myAppointments.filter(
           a => a.isSubscriptionUse && a.subscriptionId === activeSubscription.id && a.serviceId === primaryService.id && a.status !== 'CANCELLED'
@@ -386,8 +483,10 @@ export default function CustomerPanel({
           alert(`Você já utilizou todas as ${totalAllowedForService} cotas do serviço "${primaryService.name}" do seu pacote este mês.`);
           return;
         }
+        isSub = true;
+      } else {
+        isSub = true;
       }
-      isSub = true;
     }
 
     const newAppointment: Appointment = {
@@ -415,17 +514,20 @@ export default function CustomerPanel({
     playAppointmentScheduledSound();
 
     if (isSub && activeSubscription) {
-      const updatedSubscriptions = subscriptions.map(s => {
-        if (s.id === activeSubscription.id) {
-          const newRem = Math.max(0, s.servicesRemaining - 1);
-          return {
-            ...s,
-            servicesRemaining: newRem
-          };
-        }
-        return s;
-      });
-      onUpdateState('subscriptions', updatedSubscriptions);
+      const isUnlimitedPlan = activeSubscribedPlan?.isUnlimited === true || activeSubscription.servicesRemaining >= 900;
+      if (!isUnlimitedPlan) {
+        const updatedSubscriptions = subscriptions.map(s => {
+          if (s.id === activeSubscription.id) {
+            const newRem = Math.max(0, s.servicesRemaining - 1);
+            return {
+              ...s,
+              servicesRemaining: newRem
+            };
+          }
+          return s;
+        });
+        onUpdateState('subscriptions', updatedSubscriptions);
+      }
       alert(`Agendamento de "${combinedServiceName}" efetuado com sucesso via Assinatura VIP na cadeira de ${selectedBarber.name}!`);
     } else {
       alert(`Seu agendamento de "${combinedServiceName}" foi efetuado com sucesso na cadeira de ${selectedBarber.name}!`);
@@ -1111,6 +1213,11 @@ export default function CustomerPanel({
                   <p className="text-xs text-slate-400 italic py-6 text-center col-span-2">Nenhum serviço encontrado para este filtro.</p>
                 ) : (
                   filteredServices.map(s => {
+                    const isUnlimitedPlan = activeSubscribedPlan?.isUnlimited === true || (activeSubscription && activeSubscription.servicesRemaining >= 900);
+                    const isPlanService = activeSubscribedPlan
+                      ? (!activeSubscribedPlan.includedServiceIds?.length || activeSubscribedPlan.includedServiceIds.includes(s.id))
+                      : false;
+
                     const totalInPkg = activeSubscription?.selectedServiceIds
                       ? activeSubscription.selectedServiceIds.filter(id => id === s.id).length
                       : 0;
@@ -1118,7 +1225,7 @@ export default function CustomerPanel({
                       a => a.isSubscriptionUse && a.subscriptionId === activeSubscription?.id && a.serviceId === s.id && a.status !== 'CANCELLED'
                     ).length;
                     const remInPkg = Math.max(0, totalInPkg - usedInPkg);
-                    const hasPkgServices = activeSubscription?.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0;
+                    const hasPkgServices = (activeSubscription?.selectedServiceIds && activeSubscription.selectedServiceIds.length > 0) || activeSubscribedPlan;
                     const isSelected = bookingServiceIds.includes(s.id);
 
                     return (
@@ -1152,7 +1259,21 @@ export default function CustomerPanel({
                               )}
                             </div>
                             {hasPkgServices && useSubscriptionForBooking && (
-                              totalInPkg > 0 ? (
+                              activeSubscribedPlan ? (
+                                isPlanService ? (
+                                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                    isUnlimitedPlan
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  }`}>
+                                    {isUnlimitedPlan ? '✨ Ilimitado no Plano' : `✨ Incluso (${activeSubscription?.servicesRemaining} rest.)`}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded shrink-0">
+                                    Avulso
+                                  </span>
+                                )
+                              ) : totalInPkg > 0 ? (
                                 <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
                                   remInPkg > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-700 border border-red-200'
                                 }`}>
@@ -1593,17 +1714,52 @@ export default function CustomerPanel({
               {parameters.customerPortalSubscriptionsTitle ? (
                 formatPortalText(parameters.customerPortalSubscriptionsTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
               ) : (
-                'Clube de Assinatura Recorrente & Descontos'
+                isQuantityDiscountEnabled
+                  ? 'Clube de Assinatura Recorrente & Descontos'
+                  : 'Clube VIP & Planos de Assinatura'
               )}
             </h3>
             <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
               {parameters.customerPortalSubscriptionsSubtitle ? (
                 formatPortalText(parameters.customerPortalSubscriptionsSubtitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
               ) : (
-                'Monte seu plano mensal sob medida. Adicione os serviços desejados ao seu pacote mensal com praticidade.'
+                isQuantityDiscountEnabled
+                  ? 'Monte seu plano mensal sob medida ou escolha um de nossos planos cadastrados com praticidade.'
+                  : 'Escolha um dos planos de assinatura ativos e garanta seus cortes e barba com economia e agendamento prioritário.'
               )}
             </p>
           </div>
+
+          {/* AVISO DE ASSINATURA PENDENTE DE PAGAMENTO NO CAIXA */}
+          {pendingSubscription && !activeSubscription && (
+            <div className={`p-5 rounded-2xl border-2 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm ${
+              isDarkMode ? 'bg-amber-950/20 border-amber-500/60 text-amber-200' : 'bg-amber-50 border-amber-400 text-amber-900'
+            }`}>
+              <div className="space-y-1 text-left">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-black font-mono rounded">
+                    ⏳ PAGAMENTO PENDENTE NO CAIXA
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
+                    {formatCurrency(pendingSubscription.totalPriceMonthly || pendingPlan?.priceMonthly || 0)}
+                  </span>
+                </div>
+                <h5 className="font-bold text-sm">
+                  {pendingPlan?.name || 'Assinatura Personalizada de Serviços'}
+                </h5>
+                <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Sua solicitação de assinatura está aguardando a confirmação do pagamento no Caixa da barbearia. Assim que for registrado, seus créditos VIP serão liberados automaticamente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCancelPendingSubscription(pendingSubscription.id)}
+                className="text-xs font-mono font-bold text-red-600 hover:text-red-700 underline cursor-pointer shrink-0"
+              >
+                Cancelar Solicitação
+              </button>
+            </div>
+          )}
 
           {activeSubscription ? (
             <div className={`p-6 rounded-2xl text-left flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm border-2 ${
@@ -1626,8 +1782,19 @@ export default function CustomerPanel({
                 <p className={`text-xs font-mono font-extrabold p-2.5 rounded-xl inline-block border ${
                   isDarkMode ? 'bg-slate-800 border-slate-700 text-amber-300' : 'bg-amber-100 border-amber-300 text-amber-900'
                 }`}>
-                  Atendimentos restantes para este ciclo: {activeSubscription.servicesRemaining} cortes
+                  Atendimentos restantes para este ciclo: {activeSubscribedPlan?.isUnlimited || activeSubscription.servicesRemaining >= 900 ? '✨ Cortes Ilimitados' : `${activeSubscription.servicesRemaining} cortes`}
                 </p>
+
+                {activeSubscribedPlan?.includedServiceIds && activeSubscribedPlan.includedServiceIds.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[10px] font-mono font-bold uppercase text-amber-600 dark:text-amber-400">Serviços inclusos:</span>
+                    {activeSubscribedPlan.includedServiceIds.map(id => services.find(s => s.id === id)?.name).filter(Boolean).map((name, idx) => (
+                      <span key={idx} className="text-[10px] font-mono px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                        ✓ {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button
@@ -1638,141 +1805,322 @@ export default function CustomerPanel({
               </button>
             </div>
           ) : (
-            <div className={`p-6 rounded-2xl space-y-6 shadow-sm border ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
-            }`}>
-              <div>
-                <h4 className={`text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                  {parameters.customerPortalPackageTitle ? (
-                    formatPortalText(parameters.customerPortalPackageTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
-                  ) : (
-                    '🛠️ Monte Seu Pacote Mensal de Cortes & Barba'
-                  )}
-                </h4>
-                <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                  {parameters.customerPortalPackageSubtitle ? (
-                    formatPortalText(parameters.customerPortalPackageSubtitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
-                  ) : (
-                    'Selecione quais serviços você deseja receber ao longo do mês:'
-                  )}
-                </p>
-              </div>
-
-              {/* Tabela de Descontos Progressivos - Exibida APENAS se ativado nas configurações */}
-              {isQuantityDiscountEnabled && (
-                <div className={`p-4 rounded-xl border ${
-                  isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+            <div className="space-y-6">
+              {/* ALTERNADOR DE MODO: Apenas exibido se descontos por quantidade estiverem ativados E existirem planos prontos cadastrados */}
+              {isQuantityDiscountEnabled && plans && plans.length > 0 && (
+                <div className={`flex gap-1.5 p-1 rounded-xl border w-full max-w-md mx-auto ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
                 }`}>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] text-amber-500 uppercase font-mono font-extrabold">Tabela de Descontos Progressivos:</span>
-                    <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      Descontos Ativos
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>2 Serviços</span>
-                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
-                    </div>
-                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>3 a 4 Serviços</span>
-                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
-                    </div>
-                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>5 a 6 Serviços</span>
-                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
-                    </div>
-                    <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                      <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>7+ Serviços</span>
-                      <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSubViewMode('plans')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      subViewMode === 'plans'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : isDarkMode ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Planos de Assinatura ({plans.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubViewMode('custom')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      subViewMode === 'custom'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : isDarkMode ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    <span>Monte Seu Pacote</span>
+                  </button>
                 </div>
               )}
 
-              {/* Seleção de Serviços por Categoria (Multi-categoria suportada) */}
-              <div className="space-y-4">
-                {categoriesList.map(cat => {
-                  const catServices = services.filter(s => (s.categories && s.categories.length > 0 ? s.categories.includes(cat) : (s.category || 'Outros') === cat));
-                  if (catServices.length === 0) return null;
-
-                  return (
-                    <div key={cat} className="space-y-2">
-                      <h5 className={`text-[11px] font-extrabold uppercase font-mono px-3 py-1.5 rounded-lg border-l-4 border-amber-500 ${
-                        isDarkMode ? 'bg-slate-800 text-amber-400' : 'bg-amber-50 text-amber-800'
-                      }`}>
-                        {cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamentos' : cat}
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {catServices.map(srv => {
-                          const qty = selectedServiceQuantities[srv.id] || 0;
-                          return (
-                            <div key={srv.id} className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
-                              isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-                            }`}>
-                              <div>
-                                <h6 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{srv.name}</h6>
-                                <p className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{formatCurrency(srv.price)} / atendimento</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustServiceQuantity(srv.id, -1)}
-                                  className={`w-7 h-7 border rounded-lg font-bold flex items-center justify-center cursor-pointer ${
-                                    isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  -
-                                </button>
-                                <span className="text-xs font-mono font-extrabold text-amber-500 w-5 text-center">{qty}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustServiceQuantity(srv.id, 1)}
-                                  className="w-7 h-7 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg font-bold flex items-center justify-center cursor-pointer"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+              {/* MODO 1: PLANOS DE ASSINATURA CADASTRADOS (Exibido obrigatoriamente se isQuantityDiscountEnabled for false, ou se subViewMode === 'plans') */}
+              {(!isQuantityDiscountEnabled || subViewMode === 'plans') ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className={`text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        {parameters.customerPortalSubscriptionsTitle ? (
+                          formatPortalText(parameters.customerPortalSubscriptionsTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                        ) : (
+                          'Planos de Assinatura Recorrente'
+                        )}
+                      </h4>
+                      <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                        Escolha o plano que melhor atende suas necessidades e garanta seus cortes e barba com economia mensal.
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
 
-              {/* Resumo */}
-              <div className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${
-                isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-              }`}>
-                <div className="space-y-1 text-xs font-mono">
-                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Serviços Selecionados: <strong className={isDarkMode ? 'text-white' : 'text-slate-900'}>{totalQuantity}</strong></p>
-                  <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>
-                    Valor Total: <span className={discountAmount > 0 && isQuantityDiscountEnabled ? "line-through text-slate-400" : (isDarkMode ? "text-white font-bold" : "text-slate-900 font-bold")}>{formatCurrency(rawTotalCost)}</span>
-                  </p>
-                  {discountAmount > 0 && isQuantityDiscountEnabled && (
-                    <p className="text-emerald-500 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
+                  {(!plans || plans.length === 0) ? (
+                    <div className={`p-8 text-center rounded-2xl border ${
+                      isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
+                    }`}>
+                      <Award className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-60" />
+                      <p className="text-sm font-bold">Nenhum plano de assinatura ativo no momento.</p>
+                      <p className="text-xs mt-1">Consulte os profissionais da barbearia para obter mais detalhes sobre novos planos.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {plans.map((plan) => {
+                        const isUnlimited = plan.isUnlimited === true;
+                        const includedServices = (plan.includedServiceIds || [])
+                          .map(id => services.find(s => s.id === id))
+                          .filter(Boolean) as Service[];
+                        const isPendingForThisPlan = pendingSubscription?.planId === plan.id;
+
+                        return (
+                          <div
+                            key={plan.id}
+                            className={`rounded-2xl p-5 border-2 transition-all flex flex-col justify-between gap-4 shadow-sm hover:shadow-md ${
+                              isDarkMode
+                                ? 'bg-slate-900 border-slate-800 hover:border-amber-500/60 text-slate-100'
+                                : 'bg-white border-slate-200 hover:border-amber-400 text-slate-900'
+                            }`}
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="text-sm font-extrabold font-mono block leading-snug">
+                                    {plan.name}
+                                  </span>
+                                  <div className="text-xl font-black text-amber-500 font-mono mt-1">
+                                    {formatCurrency(plan.priceMonthly)}
+                                    <span className="text-xs font-normal text-slate-400 ml-1">/mês</span>
+                                  </div>
+                                </div>
+
+                                {isUnlimited ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-amber-500 text-slate-950 shadow-xs shrink-0 flex items-center gap-1">
+                                    ✨ ILIMITADO
+                                  </span>
+                                ) : (
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold shrink-0 ${
+                                    isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    {plan.servicesIncludedCount} cortes/mês
+                                  </span>
+                                )}
+                              </div>
+
+                              {plan.description && (
+                                <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                                  {plan.description}
+                                </p>
+                              )}
+
+                              {/* Serviços Inclusos */}
+                              {includedServices.length > 0 ? (
+                                <div className="space-y-1.5 pt-1">
+                                  <span className="text-[10px] uppercase font-mono font-bold text-amber-500 block">
+                                    Serviços Cobertos:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {includedServices.map(srv => (
+                                      <span
+                                        key={srv.id}
+                                        className={`text-[10px] font-mono px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                                          isDarkMode
+                                            ? 'bg-slate-800/80 border-slate-700 text-slate-200'
+                                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                                        }`}
+                                      >
+                                        ✓ {srv.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="pt-1">
+                                  <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                    ✓ Válido para todos os serviços da barbearia
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Regras e Vantagens */}
+                              {plan.rules && plan.rules.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">
+                                    Vantagens & Regras:
+                                  </span>
+                                  <ul className="space-y-1 text-xs">
+                                    {plan.rules.map((rule, idx) => (
+                                      <li key={idx} className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>{rule}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSubscribeToPlan(plan)}
+                              disabled={isPendingForThisPlan}
+                              className={`w-full py-3 px-4 rounded-xl font-mono font-extrabold text-xs uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+                                isPendingForThisPlan
+                                  ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                  : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                              }`}
+                            >
+                              {isPendingForThisPlan ? (
+                                <span>⏳ Solicitação Pendente no Caixa</span>
+                              ) : (
+                                <span>✨ Quero Assinar Este Plano</span>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-                <div className="text-left md:text-right">
-                  <span className={`text-[10px] uppercase font-mono font-bold block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Mensalidade Total</span>
-                  <span className="text-2xl font-black text-amber-500 font-mono">{formatCurrency(finalMonthlyCost)}</span>
-                </div>
-              </div>
+              ) : (
+                /* MODO 2: MONTE SEU PACOTE (Exibido APENAS se isQuantityDiscountEnabled for true E subViewMode === 'custom') */
+                <div className={`p-6 rounded-2xl space-y-6 shadow-sm border ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
+                }`}>
+                  <div>
+                    <h4 className={`text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {parameters.customerPortalPackageTitle ? (
+                        formatPortalText(parameters.customerPortalPackageTitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                      ) : (
+                        '🛠️ Monte Seu Pacote Mensal de Cortes & Barba'
+                      )}
+                    </h4>
+                    <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                      {parameters.customerPortalPackageSubtitle ? (
+                        formatPortalText(parameters.customerPortalPackageSubtitle, currentCustomer.name, parameters.shopName, parameters.phone, parameters.address)
+                      ) : (
+                        'Selecione quais serviços você deseja receber ao longo do mês com descontos progressivos:'
+                      )}
+                    </p>
+                  </div>
 
-              <button
-                type="button"
-                onClick={handleCreateCustomSubscription}
-                disabled={totalQuantity === 0}
-                className={`w-full font-bold text-xs py-3.5 rounded-xl cursor-pointer transition uppercase tracking-wider ${
-                  totalQuantity > 0 
-                    ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md' 
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                Confirmar Assinatura Mensal
-              </button>
+                  {/* Tabela de Descontos Progressivos */}
+                  <div className={`p-4 rounded-xl border ${
+                    isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] text-amber-500 uppercase font-mono font-extrabold">Tabela de Descontos Progressivos:</span>
+                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        Descontos Ativos
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                      <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>2 Serviços</span>
+                        <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount2 ?? 0.05) * 100)}% OFF</span>
+                      </div>
+                      <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>3 a 4 Serviços</span>
+                        <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount3to4 ?? 0.12) * 100)}% OFF</span>
+                      </div>
+                      <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>5 a 6 Serviços</span>
+                        <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount5to6 ?? 0.20) * 100)}% OFF</span>
+                      </div>
+                      <div className={`p-2.5 border rounded-lg ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <span className={`text-[10px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>7+ Serviços</span>
+                        <span className="text-sm font-black text-amber-500">{Math.round((parameters.subDiscount7Plus ?? 0.28) * 100)}% OFF</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seleção de Serviços por Categoria (Multi-categoria suportada) */}
+                  <div className="space-y-4">
+                    {categoriesList.map(cat => {
+                      const catServices = services.filter(s => (s.categories && s.categories.length > 0 ? s.categories.includes(cat) : (s.category || 'Outros') === cat));
+                      if (catServices.length === 0) return null;
+
+                      return (
+                        <div key={cat} className="space-y-2">
+                          <h5 className={`text-[11px] font-extrabold uppercase font-mono px-3 py-1.5 rounded-lg border-l-4 border-amber-500 ${
+                            isDarkMode ? 'bg-slate-800 text-amber-400' : 'bg-amber-50 text-amber-800'
+                          }`}>
+                            {cat === 'HAIR' ? '✂️ Cabelo' : cat === 'BEARD' ? '🧔 Barba' : cat === 'COMBO' ? '⚡ Combos' : cat === 'TREATMENT' ? '🧼 Tratamentos' : cat}
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {catServices.map(srv => {
+                              const qty = selectedServiceQuantities[srv.id] || 0;
+                              return (
+                                <div key={srv.id} className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                  isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                                }`}>
+                                  <div>
+                                    <h6 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{srv.name}</h6>
+                                    <p className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{formatCurrency(srv.price)} / atendimento</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustServiceQuantity(srv.id, -1)}
+                                      className={`w-7 h-7 border rounded-lg font-bold flex items-center justify-center cursor-pointer ${
+                                        isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      -
+                                    </button>
+                                    <span className="text-xs font-mono font-extrabold text-amber-500 w-5 text-center">{qty}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustServiceQuantity(srv.id, 1)}
+                                      className="w-7 h-7 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg font-bold flex items-center justify-center cursor-pointer"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Resumo */}
+                  <div className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${
+                    isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                  }`}>
+                    <div className="space-y-1 text-xs font-mono">
+                      <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>Serviços Selecionados: <strong className={isDarkMode ? 'text-white' : 'text-slate-900'}>{totalQuantity}</strong></p>
+                      <p className={isDarkMode ? 'text-slate-300' : 'text-slate-600'}>
+                        Valor Total: <span className={discountAmount > 0 ? "line-through text-slate-400" : (isDarkMode ? "text-white font-bold" : "text-slate-900 font-bold")}>{formatCurrency(rawTotalCost)}</span>
+                      </p>
+                      {discountAmount > 0 && (
+                        <p className="text-emerald-500 font-bold">Desconto Concedido ({Math.round(discountPct * 100)}%): -{formatCurrency(discountAmount)}</p>
+                      )}
+                    </div>
+                    <div className="text-left md:text-right">
+                      <span className={`text-[10px] uppercase font-mono font-bold block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Mensalidade Total</span>
+                      <span className="text-2xl font-black text-amber-500 font-mono">{formatCurrency(finalMonthlyCost)}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomSubscription}
+                    disabled={totalQuantity === 0}
+                    className={`w-full font-bold text-xs py-3.5 rounded-xl cursor-pointer transition uppercase tracking-wider ${
+                      totalQuantity > 0
+                        ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    Confirmar Assinatura Mensal
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
