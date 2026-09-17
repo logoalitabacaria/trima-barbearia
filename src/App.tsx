@@ -15,6 +15,7 @@ import AdminPanel from './components/AdminPanel';
 import BarberPanel from './components/BarberPanel';
 import CustomerPanel from './components/CustomerPanel';
 import CashierPanel from './components/CashierPanel';
+import AdminOperationsPanel from './components/AdminOperationsPanel';
 import ManualModal from './components/ManualModal';
 import { PasswordChangeModal } from './components/PasswordChangeModal';
 
@@ -131,6 +132,24 @@ export default function App() {
       const canAccessBarber = currentUser.role === 'ADMIN' || currentUser.role === 'BARBER' || perms.includes('MANAGE_APPOINTMENTS') || perms.includes('EDIT_COMANDAS');
       const canAccessCaixa = currentUser.role === 'ADMIN' || currentUser.role === 'CASHIER' || perms.includes('CHECKOUT_COMANDAS');
 
+      // If user was completing a guest appointment draft, prioritize sending them straight to the Customer view
+      let hasGuestDraft = false;
+      try {
+        const raw = localStorage.getItem('logoali_guest_booking_draft');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const diffHours = (Date.now() - (parsed.timestamp || 0)) / (1000 * 60 * 60);
+          if (diffHours < 24 && Array.isArray(parsed.serviceIds) && parsed.serviceIds.length > 0) {
+            hasGuestDraft = true;
+          }
+        }
+      } catch {}
+
+      if (hasGuestDraft) {
+        setActiveTab('cliente');
+        return;
+      }
+
       if (currentUser.role === 'ADMIN') {
         setActiveTab('admin');
       } else if (currentUser.role === 'BARBER') {
@@ -154,7 +173,7 @@ export default function App() {
   // Dynamic SEO Robots Meta Tag protection for Private Panels vs Public Pages
   useEffect(() => {
     const metaRobots = document.querySelector('meta[name="robots"]');
-    if (activeTab === 'admin' || activeTab === 'barbeiro' || activeTab === 'caixa') {
+    if (activeTab === 'admin' || activeTab === 'barbeiro' || activeTab === 'caixa' || activeTab === 'operacoes') {
       if (metaRobots) {
         metaRobots.setAttribute('content', 'noindex, nofollow');
       }
@@ -372,15 +391,14 @@ export default function App() {
                 <span className="text-xl bg-yellow-500 text-black p-1.5 rounded-lg font-black font-mono">LA</span>
               )}
               <div>
-                <h1 className="text-sm font-extrabold tracking-tight uppercase text-yellow-500">
-                  {state.parameters?.shopName ? (
-                    <span>{state.parameters.shopName}</span>
-                  ) : (
-                    <>Trima <span className="text-white">Studio</span></>
-                  )}
+                <h1
+                  className="text-sm font-extrabold tracking-tight uppercase transition-colors"
+                  style={{ color: state.parameters?.systemNameColor || (state.parameters?.primaryColor || '#eab308') }}
+                >
+                  {state.parameters?.systemName || state.parameters?.shopName || 'Trima Studio'}
                 </h1>
                 <p className="text-[9px] text-zinc-400 uppercase tracking-widest font-mono">
-                  Sempre em Boa Companhia
+                  {state.parameters?.systemSubtitle || 'Sempre em Boa Companhia'}
                 </p>
               </div>
             </div>
@@ -458,15 +476,26 @@ export default function App() {
                   </button>
                 )}
 
-                {canAccessBarber && (
+                {currentUser.role === 'ADMIN' ? (
                   <button
-                    onClick={() => setActiveTab('barbeiro')}
+                    onClick={() => setActiveTab('operacoes')}
                     className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
-                      activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                      activeTab === 'operacoes' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
-                    🧔 Minha Agenda & Comandas
+                    📋 Central de Agendamentos & Comandas
                   </button>
+                ) : (
+                  canAccessBarber && (
+                    <button
+                      onClick={() => setActiveTab('barbeiro')}
+                      className={`px-4 py-2 rounded-lg font-semibold tracking-wider uppercase font-mono transition cursor-pointer ${
+                        activeTab === 'barbeiro' ? 'bg-yellow-500 text-black font-bold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                      }`}
+                    >
+                      🧔 Minha Agenda & Comandas
+                    </button>
+                  )
                 )}
 
                 {canAccessCaixa && (
@@ -507,6 +536,8 @@ export default function App() {
                 comandas={state.comandas}
                 parameters={state.parameters}
                 npsFeedbacks={state.npsFeedbacks || []}
+                coupons={state.coupons || []}
+                creditTransactions={state.creditTransactions || []}
                 onUpdateState={handleUpdateState}
                 isGuestMode={true}
                 onOpenLoginModal={() => setShowLoginModal(true)}
@@ -567,7 +598,22 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'barbeiro' && canAccessBarber && (
+                  {(activeTab === 'operacoes' || (activeTab === 'barbeiro' && currentUser.role === 'ADMIN')) && canAccessAdmin && (
+                    <AdminOperationsPanel
+                      currentUser={currentUser}
+                      users={state.users}
+                      services={state.services}
+                      products={state.products}
+                      appointments={state.appointments}
+                      comandas={state.comandas}
+                      subscriptions={state.subscriptions || []}
+                      barberDetails={state.barberDetails || []}
+                      parameters={state.parameters}
+                      onUpdateState={handleUpdateState}
+                    />
+                  )}
+
+                  {activeTab === 'barbeiro' && currentUser.role !== 'ADMIN' && canAccessBarber && (
                     <BarberPanel
                       currentBarber={currentUser}
                       users={state.users}

@@ -15,6 +15,9 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   phone: "+55 11 92598-0946",
   primaryColor: "#eab308",
   backgroundColor: "#000000",
+  systemName: "Trima Studio",
+  systemNameColor: "#eab308",
+  systemSubtitle: "Sempre em Boa Companhia",
   enableQuantitySubscriptionDiscount: true,
   subDiscount2: 0.05,
   subDiscount3to4: 0.12,
@@ -68,7 +71,13 @@ export const INITIAL_SYSTEM_PARAMETERS: SystemParameters = {
   portalShowServiceCategories: true,
   portalShowAppointmentsHistory: true,
   portalShowNpsSurvey: true,
+  portalShowGoogleReviews: true,
   portalShowContactFooter: true,
+
+  // Google Reviews Config
+  googleReviewUrl: 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4,5',
+  googleReviewCalloutTitle: 'Avalie Nosso Atendimento no Google!',
+  googleReviewCalloutText: 'Sua opinião é fundamental para nós. Deixe sua nota de 5 estrelas no Google e ajude outros clientes a nos conhecerem.',
 
   // Customer Portal Section Titles & Subtitles
   customerPortalAgendarTitle: 'Agende Seu Atendimento',

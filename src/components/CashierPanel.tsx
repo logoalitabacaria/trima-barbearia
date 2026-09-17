@@ -52,8 +52,13 @@ export default function CashierPanel({
   const selectedComanda = comandas.find(c => c.id === selectedCmdId);
   const selectedCustomer = users.find(u => u.id === selectedComanda?.customerId);
 
-  // Auto-set payment method to ASSINATURA if comanda is marked as subscription use
+  // Auto-set payment method to ASSINATURA if comanda is marked as subscription use & initialize discountVal
   React.useEffect(() => {
+    if (selectedComanda) {
+      setDiscountVal(selectedComanda.discount ? String(selectedComanda.discount) : '0');
+    } else {
+      setDiscountVal('0');
+    }
     if (selectedComanda?.isSubscriptionUse || selectedComanda?.paymentMethod === 'ASSINATURA') {
       setPaymentMethod('ASSINATURA');
     }
@@ -492,6 +497,18 @@ export default function CashierPanel({
                           Mínimo {parameters.loyaltyMinPointsRedeem || 100} pts para resgate
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {selectedComanda.appliedCouponCode && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-400 font-bold">🎟️ Cupom de Desconto:</span>
+                        <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-extrabold">{selectedComanda.appliedCouponCode}</span>
+                      </div>
+                      <span className="text-emerald-400 font-bold">
+                        - {formatCurrency(selectedComanda.couponDiscount || selectedComanda.discount || 0)}
+                      </span>
                     </div>
                   )}
 

@@ -181,7 +181,7 @@ export default function AdminPanel({
   const [serviceSearchTerm, setServiceSearchTerm] = useState<string>('');
 
   // Settings Categorization state
-  const [activeSettingsCategory, setActiveSettingsCategory] = useState<'promocoes' | 'assinaturas' | 'geral' | 'fidelidade' | 'portal' | 'dados'>('promocoes');
+  const [activeSettingsCategory, setActiveSettingsCategory] = useState<'geral' | 'portal' | 'assinaturas' | 'promocoes' | 'fidelidade' | 'dados'>('geral');
 
   // 4. User Form (Acessos)
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -3504,6 +3504,8 @@ export default function AdminPanel({
           <SettingsTabs
             activeCategory={activeSettingsCategory}
             onChangeCategory={setActiveSettingsCategory}
+            bannersCount={parameters.customerPortalBanners?.length || 0}
+            couponsCount={coupons?.length || 0}
           />
 
           {/* 1. PROMOÇÕES & CUPONS */}
@@ -5259,7 +5261,7 @@ export default function AdminPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-900">
-                    {users.filter(u => (u.role === 'BARBER' || u.role === 'ADMIN') && u.isActive).map(b => {
+                    {users.filter(u => u.role === 'BARBER' && u.isActive).map(b => {
                       const customGoals: Partial<BarberCustomGoal> = parameters.barberCustomGoals?.[b.id] || {};
                       return (
                         <tr key={b.id} className="hover:bg-zinc-900/50">
@@ -5856,6 +5858,22 @@ export default function AdminPanel({
                   </label>
                 </div>
                 <p className="text-[9px] text-zinc-500 mt-1 font-mono">Se não enviada, a foto principal do PC será usada em telas menores.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-mono block mb-1">
+                  Link de Redirecionamento (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={bannerLinkUrl}
+                  onChange={(e) => setBannerLinkUrl(e.target.value)}
+                  placeholder="Ex: https://wa.me/5511999999999 ou https://instagram.com/..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none font-mono"
+                />
+                <p className="text-[9px] text-zinc-500 mt-1 font-mono">
+                  Ao clicar no banner no portal do cliente, ele abrirá automaticamente este endereço externo ou link do WhatsApp.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

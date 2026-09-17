@@ -4,8 +4,9 @@
  */
 
 import React from 'react';
-import { Store, MapPin, Palette, CreditCard, Plus, Trash2, Globe, Instagram, MessageCircle, Facebook, Video } from 'lucide-react';
+import { Store, MapPin, Palette, CreditCard, Plus, Trash2, Globe, Instagram, MessageCircle, Facebook, Video, Star, ExternalLink, Sparkles } from 'lucide-react';
 import { SystemParameters } from '../../types';
+import { getGoogle5StarReviewUrl } from '../../utils/helpers';
 
 interface SettingsGeneralProps {
   parameters: SystemParameters;
@@ -231,58 +232,198 @@ export default function SettingsGeneral({
               Se deixado em branco, o sistema gera automaticamente o link com base no endereço físico cadastrado.
             </p>
           </div>
+
+          <div className="md:col-span-2 border-t border-zinc-850 pt-4 mt-1 bg-zinc-900/40 p-4 rounded-xl border">
+            <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+              <label className="text-[11px] text-amber-400 uppercase font-mono font-bold flex items-center gap-1.5">
+                <Star className="w-4 h-4 text-amber-400 fill-amber-400" /> Link Direto para Avaliação no Google (Abre com 5 Estrelas)
+              </label>
+              {parameters.googleReviewUrl && (
+                <a
+                  href={getGoogle5StarReviewUrl(parameters)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-mono flex items-center gap-1 transition"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>Testar Link no Google (5★)</span>
+                  <ExternalLink className="w-3 h-3 opacity-80" />
+                </a>
+              )}
+            </div>
+            <input
+              type="text"
+              value={parameters.googleReviewUrl || ''}
+              onChange={(e) => onUpdateParameter('googleReviewUrl', e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-xs text-white focus:border-amber-500 outline-none font-mono"
+              placeholder="Ex: https://search.google.com/local/writereview?placeid=SEU_PLACE_ID ou https://g.page/r/SEU_ID/review"
+            />
+            <div className="mt-2 text-[10px] text-zinc-400 font-mono space-y-1">
+              <p className="flex items-start gap-1.5">
+                <span className="text-amber-400 shrink-0 font-bold">⭐ Como funciona as 5 estrelas:</span>
+                <span>
+                  Cole o link gerado no perfil da sua empresa (Google Meu Negócio) ou o Place ID. O sistema injeta automaticamente o comando para <strong>já abrir o pop-up com as 5 estrelas marcadas</strong> para o cliente avaliar em 1 clique!
+                </span>
+              </p>
+              <p className="text-[9px] text-zinc-500">
+                Formatos aceitos: link do Google Meu Negócio (<code className="text-zinc-400">g.page/r/.../review</code>), link com placeid (<code className="text-zinc-400">search.google.com/local/writereview?placeid=...</code>) ou código Place ID do Google Maps (<code className="text-zinc-400">ChIJ...</code>).
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* 3. PERSONALIZAÇÃO VISUAL, CORES & LOGOMARCA */}
-      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-4">
-        <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 border-b border-zinc-850 pb-3 flex items-center gap-2">
-          <Palette className="w-4 h-4 text-yellow-400" />
-          Personalização Visual, Cores & Logomarca
-        </h4>
+      <div className="bg-[#101012] border border-zinc-800 p-5 sm:p-6 rounded-2xl space-y-5">
+        <div className="border-b border-zinc-850 pb-3 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h4 className="text-sm font-bold uppercase tracking-wider font-mono text-yellow-500 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-yellow-400" />
+              Personalização Visual, Identidade do Topo & Logomarca
+            </h4>
+            <p className="text-xs text-zinc-400 mt-1">
+              Personalize o nome exibido no canto superior, cor ao lado da logo, logotipo e paleta do sistema.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2.5 py-1 rounded-lg">
+            Cabeçalho & Tema
+          </span>
+        </div>
+
+        {/* PRÉ-VISUALIZAÇÃO AO VIVO DO CABEÇALHO */}
+        <div className="bg-black border border-zinc-800 rounded-xl p-3.5 space-y-1.5 shadow-inner">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold flex items-center gap-1.5">
+              👁️ Pré-visualização do Canto Superior (ao lado do logo):
+            </span>
+            <span className="text-[9px] font-mono text-emerald-400">Tempo real</span>
+          </div>
+          <div className="bg-zinc-950 border border-zinc-850 p-3 rounded-xl flex items-center gap-3">
+            {parameters.logoUrl ? (
+              <img
+                src={parameters.logoUrl}
+                alt="Logo"
+                className="h-10 w-10 object-contain rounded-lg border border-zinc-800 bg-black shrink-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="text-xl bg-yellow-500 text-black p-1.5 rounded-lg font-black font-mono shrink-0">
+                LA
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <h1
+                className="text-sm sm:text-base font-extrabold tracking-tight uppercase truncate transition-colors"
+                style={{ color: parameters.systemNameColor || parameters.primaryColor || '#eab308' }}
+              >
+                {parameters.systemName || parameters.shopName || 'Trima Studio'}
+              </h1>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-mono truncate">
+                {parameters.systemSubtitle || 'Sempre em Boa Companhia'}
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">
-              Cor de Destaque / Tema (Hex)
-            </label>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="color"
-                value={parameters.primaryColor || '#eab308'}
-                onChange={(e) => onUpdateParameter('primaryColor', e.target.value)}
-                className="h-10 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
-              />
+          <div className="space-y-4">
+            {/* Nome do Sistema no Topo */}
+            <div>
+              <label className="text-[10px] text-zinc-300 uppercase font-mono font-bold block mb-1">
+                Nome do Sistema no Topo (ao lado da Logo) *
+              </label>
               <input
                 type="text"
-                value={parameters.primaryColor || '#eab308'}
-                onChange={(e) => onUpdateParameter('primaryColor', e.target.value)}
-                placeholder="#eab308"
-                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                value={parameters.systemName || parameters.shopName || ''}
+                onChange={(e) => {
+                  onUpdateParameter('systemName', e.target.value);
+                  if (!parameters.shopName) {
+                    onUpdateParameter('shopName', e.target.value);
+                  }
+                }}
+                placeholder="Ex: Trima Studio"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-yellow-500 outline-none"
               />
             </div>
 
-            <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">
-              Cor do Fundo do Sistema (Hex)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={parameters.backgroundColor || '#000000'}
-                onChange={(e) => onUpdateParameter('backgroundColor', e.target.value)}
-                className="h-10 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
-              />
+            {/* Cor do Nome do Topo */}
+            <div>
+              <label className="text-[10px] text-zinc-300 uppercase font-mono font-bold block mb-1">
+                Cor do Nome no Topo (Hex) *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={parameters.systemNameColor || parameters.primaryColor || '#eab308'}
+                  onChange={(e) => onUpdateParameter('systemNameColor', e.target.value)}
+                  className="h-9 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
+                />
+                <input
+                  type="text"
+                  value={parameters.systemNameColor || parameters.primaryColor || '#eab308'}
+                  onChange={(e) => onUpdateParameter('systemNameColor', e.target.value)}
+                  placeholder="#eab308"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono uppercase focus:border-yellow-500 outline-none font-bold"
+                />
+              </div>
+            </div>
+
+            {/* Subtítulo no Topo */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">
+                Slogan / Subtítulo Abaixo do Nome
+              </label>
               <input
                 type="text"
-                value={parameters.backgroundColor || '#000000'}
-                onChange={(e) => onUpdateParameter('backgroundColor', e.target.value)}
-                placeholder="#000000"
-                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                value={parameters.systemSubtitle || 'Sempre em Boa Companhia'}
+                onChange={(e) => onUpdateParameter('systemSubtitle', e.target.value)}
+                placeholder="Ex: Sempre em Boa Companhia"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none"
               />
             </div>
-            <p className="text-[9px] text-zinc-500 italic mt-1.5">
-              Altera instantaneamente os botões, realces e fundo de tela em todos os painéis.
-            </p>
+
+            {/* Cor de Destaque / Tema */}
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">
+                Cor de Destaque / Botões (Hex)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={parameters.primaryColor || '#eab308'}
+                  onChange={(e) => onUpdateParameter('primaryColor', e.target.value)}
+                  className="h-9 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
+                />
+                <input
+                  type="text"
+                  value={parameters.primaryColor || '#eab308'}
+                  onChange={(e) => onUpdateParameter('primaryColor', e.target.value)}
+                  placeholder="#eab308"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block mb-1">
+                Cor do Fundo do Sistema (Hex)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={parameters.backgroundColor || '#000000'}
+                  onChange={(e) => onUpdateParameter('backgroundColor', e.target.value)}
+                  className="h-9 w-10 bg-zinc-950 border border-zinc-800 rounded cursor-pointer p-1"
+                />
+                <input
+                  type="text"
+                  value={parameters.backgroundColor || '#000000'}
+                  onChange={(e) => onUpdateParameter('backgroundColor', e.target.value)}
+                  placeholder="#000000"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                />
+              </div>
+            </div>
           </div>
 
           <div>

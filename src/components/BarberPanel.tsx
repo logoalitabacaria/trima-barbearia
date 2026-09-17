@@ -415,6 +415,9 @@ export default function BarberPanel({
       return;
     }
 
+    const couponDiscount = apt.discountAmount || 0;
+    const initialTotal = Math.max(0, apt.servicePrice - couponDiscount);
+
     const newComanda: Comanda = {
       id: `cmd-${Date.now()}`,
       appointmentId: apt.id,
@@ -432,8 +435,10 @@ export default function BarberPanel({
         }
       ],
       subtotal: apt.servicePrice,
-      discount: 0,
-      total: apt.servicePrice,
+      discount: couponDiscount,
+      total: initialTotal,
+      appliedCouponCode: apt.appliedCouponCode,
+      couponDiscount: couponDiscount > 0 ? couponDiscount : undefined,
       status: 'OPEN',
       createdAt: new Date().toISOString(),
       createdBy: currentBarber.name,
@@ -1618,6 +1623,12 @@ export default function BarberPanel({
                           <p className="text-xs text-yellow-500 font-semibold mt-0.5">Serviço: {apt.serviceName}</p>
                           <p className="text-[11px] text-zinc-400 mt-0.5">{apt.customerPhone ? `WhatsApp: ${apt.customerPhone}` : 'Sem telefone'}</p>
                           <p className="text-[11px] font-mono text-zinc-500">Data: {apt.date}</p>
+                          {apt.appliedCouponCode && (
+                            <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold">
+                              <span>🎟️ Cupom: {apt.appliedCouponCode}</span>
+                              {apt.discountAmount ? <span>(- {formatCurrency(apt.discountAmount)})</span> : null}
+                            </div>
+                          )}
                         </div>
                       </div>
 

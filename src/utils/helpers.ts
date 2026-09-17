@@ -7,7 +7,6 @@ export function formatCurrency(value?: number): string {
   if (value === undefined || value === null || isNaN(value)) return 'R$ 0,00';
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-
 /**
  * Formats a phone number to standard international WhatsApp format without characters
  */
@@ -156,4 +155,61 @@ export function calculateProductABC(products: Product[] = [], comandas: Comanda[
       abcCategory: category
     };
   });
+}
+
+/**
+ * Builds direct Google review URL pre-opening with 5 stars selected
+ */
+export function getGoogle5StarReviewUrl(parameters: Partial<SystemParameters>): string {
+  const raw = parameters.googleReviewUrl?.trim();
+  if (raw) {
+    // If it's directly a Google Place ID (e.g. ChIJ...)
+    if (raw.startsWith('ChIJ') || (!raw.includes('/') && !raw.includes('.') && raw.length > 15)) {
+      return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(raw)},5`;
+    }
+
+    // If it's a search.google.com/local/writereview URL
+    if (raw.includes('search.google.com/local/writereview')) {
+      try {
+        const fullUrl = raw.startsWith('http') ? raw : `https://${raw}`;
+        const urlObj = new URL(fullUrl);
+        const placeid = urlObj.searchParams.get('placeid');
+        if (placeid) {
+          if (!placeid.endsWith(',5') && !urlObj.searchParams.has('review_score')) {
+            urlObj.searchParams.set('placeid', `${placeid},5`);
+            urlObj.searchParams.set('review_score', '5');
+            return urlObj.toString();
+          }
+        }
+        return fullUrl;
+      } catch {
+        if (!raw.includes(',5') && !raw.includes('review_score')) {
+          const sep = raw.includes('?') ? '&' : '?';
+          return `${raw}${sep}review_score=5`;
+        }
+        return raw.startsWith('http') ? raw : `https://${raw}`;
+      }
+    }
+
+    // If it's a Google Business Profile short link like g.page/r/xxx
+    if (raw.includes('g.page/r/')) {
+      let cleaned = raw.startsWith('http') ? raw : `https://${raw}`;
+      if (!cleaned.includes('/review')) {
+        cleaned = cleaned.replace(/\/?$/, '/review');
+      }
+      return cleaned;
+    }
+
+    // Any other URL provided by user
+    return raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+  }
+
+  // Fallback to Google Maps URL if available
+  if (parameters.googleMapsUrl?.trim()) {
+    return parameters.googleMapsUrl.trim();
+  }
+
+  // Fallback to Google Search query for shop evaluation
+  const query = [parameters.shopName || 'Barbearia', parameters.address || ''].filter(Boolean).join(' ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }

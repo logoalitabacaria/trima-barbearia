@@ -83,7 +83,7 @@ export interface DiscountCoupon {
   maxUsesTotal?: number; // max times coupon can be used across all customers
   maxUsesPerCustomer?: number; // max times 1 customer can use
   timesUsed: number;
-  usedBy?: Array<{ customerId: string; customerName?: string; date: string; comandaId?: string }>;
+  usedBy?: Array<{ customerId: string; customerName?: string; date: string; comandaId?: string; appointmentId?: string }>;
   validUntil?: string; // YYYY-MM-DD
   isActive: boolean;
   rulesText?: string;
@@ -243,6 +243,9 @@ export interface Appointment {
   subscriptionId?: string;
   notes?: string;
   createdBy?: string; // Logged-in user who scheduled/created this appointment
+  appliedCouponCode?: string;
+  discountAmount?: number;
+  finalPrice?: number;
 }
 
 export type ComandaStatus = 'OPEN' | 'PAID' | 'CANCELLED' | 'CLOSED' | 'COMPLETED';
@@ -320,6 +323,9 @@ export interface SystemParameters {
   primaryColor?: string; // e.g. "#eab308" (yellow)
   backgroundColor?: string; // e.g. "#000000" (black)
   logoUrl?: string; // customizable image URL
+  systemName?: string; // Nome do sistema/barbearia que aparece no canto superior ao lado da logotipo
+  systemNameColor?: string; // Cor personalizada do nome do sistema no canto superior (ex: #eab308, #ffffff)
+  systemSubtitle?: string; // Subtítulo ou slogan no cabeçalho abaixo do nome do sistema
   // Subscription Quantity Discount Config
   enableQuantitySubscriptionDiscount?: boolean; // When false, the automatic discount based on service quantity is disabled
   subDiscount2?: number; // e.g. 0.05
@@ -400,12 +406,16 @@ export interface SystemParameters {
   // Customer Portal Block Order customization (e.g. ['banners', 'promos', 'scheduling', 'subscriptions', 'appointments', 'nps', 'contact'])
   customerPortalBlockOrder?: string[];
 
-  // Social Networks & Maps Links
+  // Social Networks, Maps & Google Reviews Links
   instagramUrl?: string;
   facebookUrl?: string;
   whatsappUrl?: string;
   tiktokUrl?: string;
   googleMapsUrl?: string;
+  googleReviewUrl?: string; // Direct link or Place ID for Google 5-Star Reviews
+  portalShowGoogleReviews?: boolean; // Show Google Reviews banner/card in customer portal
+  googleReviewCalloutTitle?: string; // Custom title for Google Review callout
+  googleReviewCalloutText?: string; // Custom text for Google Review callout
 
   // Promotions System Config
   enablePromotions?: boolean;

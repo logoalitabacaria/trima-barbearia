@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Lock, UserPlus, Shield, UserCheck, HelpCircle } from 'lucide-react';
+import { Lock, UserPlus, Shield, UserCheck, HelpCircle, Calendar, Sparkles } from 'lucide-react';
 import { User, UserRole, SystemParameters } from '../types';
 
 function validateCPF(cpf: string): boolean {
@@ -65,6 +65,19 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
   const [regPassword, setRegPassword] = useState('');
   const [regReferralCode, setRegReferralCode] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
+
+  // Check if visitor has an unsaved/pending booking draft
+  const [hasSavedDraft] = useState(() => {
+    try {
+      const raw = localStorage.getItem('logoali_guest_booking_draft');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const ageHours = (Date.now() - (parsed.timestamp || 0)) / (1000 * 60 * 60);
+        return ageHours < 24 && Array.isArray(parsed.serviceIds) && parsed.serviceIds.length > 0;
+      }
+    } catch {}
+    return false;
+  });
 
   // Check URL query parameters for referral link (e.g. ?ref=TRIMA-XXXX or ?indicacao=CODE)
   React.useEffect(() => {
@@ -220,6 +233,21 @@ export default function LoginScreen({ users, parameters, onLogin, onRegisterClie
 
       <div className="w-full max-w-md bg-[#0F0F11] border-2 border-yellow-500/35 rounded-2xl overflow-hidden shadow-2xl shadow-yellow-500/5">
         <div className="px-4 sm:px-6 py-6 sm:py-8">
+          {hasSavedDraft && (
+            <div className="mb-5 p-3 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-mono flex items-start gap-2.5 shadow-sm">
+              <Calendar className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Agendamento em andamento salvo!
+                </span>
+                <span className="text-[11px] text-zinc-300 block mt-0.5">
+                  Faça login ou cadastre-se para continuar seu agendamento exatamente de onde você parou, sem perder os serviços selecionados.
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="flex border-b border-zinc-800 mb-6">
             <button
               onClick={() => {

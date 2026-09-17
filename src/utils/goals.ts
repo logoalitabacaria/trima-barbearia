@@ -278,7 +278,7 @@ export function getBarberLeaderboard(
   barberDetails?: BarberDetail[],
   yearMonth?: string
 ): BarberLeaderboardEntry[] {
-  const barbers = users.filter(u => (u.role === 'BARBER' || u.role === 'ADMIN') && u.isActive);
+  const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
 
   const entries: BarberLeaderboardEntry[] = barbers.map(b => {
     const detail = barberDetails?.find(d => d.userId === b.id);

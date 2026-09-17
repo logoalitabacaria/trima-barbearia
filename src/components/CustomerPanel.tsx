@@ -4,10 +4,66 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Scissors, Star, Check, CheckCircle2, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon } from 'lucide-react';
-import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner, Comanda } from '../types';
-import { buildWhatsAppReminderUrl, formatPortalText } from '../utils/helpers';
+import { Calendar, Clock, Scissors, Star, Check, CheckCircle2, Award, AlertCircle, Search, UserCheck, ShieldCheck, XCircle, MessageSquare, Gift, Tag, Users, Share2, Copy, Sparkles, Crown, ChevronDown, ChevronLeft, ChevronRight, MapPin, Phone, Instagram, Facebook, MessageCircle, LogIn, ExternalLink, Sun, Moon, Ticket, Trash2, ArrowRight, RotateCcw } from 'lucide-react';
+import { User, Service, LoyaltyPlan, Appointment, CustomerSubscription, SystemParameters, NPSFeedback, CustomerBanner, Comanda, DiscountCoupon } from '../types';
+import { buildWhatsAppReminderUrl, formatPortalText, getGoogle5StarReviewUrl } from '../utils/helpers';
 import { playAppointmentScheduledSound, playSubscriptionActivatedSound } from '../utils/soundEffects';
+
+const GUEST_DRAFT_KEY = 'logoali_guest_booking_draft';
+
+interface GuestBookingDraft {
+  serviceIds: string[];
+  barberId: string;
+  date: string;
+  time: string;
+  step: 1 | 2 | 3;
+  couponCode?: string;
+  timestamp: number;
+}
+
+function getSavedGuestBookingDraft(availableServices: Service[], availableBarbers: User[]): GuestBookingDraft | null {
+  try {
+    const raw = localStorage.getItem(GUEST_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    // Discard drafts older than 24 hours
+    const ageHours = (Date.now() - (parsed.timestamp || 0)) / (1000 * 60 * 60);
+    if (ageHours > 24) return null;
+
+    const validServiceIds = Array.isArray(parsed.serviceIds)
+      ? parsed.serviceIds.filter((id: string) => availableServices.some(s => s.id === id))
+      : [];
+
+    if (validServiceIds.length === 0) return null;
+
+    const validBarberId = parsed.barberId && availableBarbers.some(b => b.id === parsed.barberId)
+      ? parsed.barberId
+      : (availableBarbers[0]?.id || '');
+
+    const today = new Date();
+    const padDay = today.getDate().toString().padStart(2, '0');
+    const padMonth = (today.getMonth() + 1).toString().padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${padMonth}-${padDay}`;
+
+    const validDate = parsed.date && parsed.date >= todayStr ? parsed.date : todayStr;
+    const validTime = typeof parsed.time === 'string' ? parsed.time : '';
+    const validStep = (parsed.step === 1 || parsed.step === 2 || parsed.step === 3) ? parsed.step : 1;
+
+    return {
+      serviceIds: validServiceIds,
+      barberId: validBarberId,
+      date: validDate,
+      time: validTime,
+      step: validStep,
+      couponCode: typeof parsed.couponCode === 'string' ? parsed.couponCode : undefined,
+      timestamp: parsed.timestamp || Date.now()
+    };
+  } catch {
+    return null;
+  }
+}
 
 interface CustomerPanelProps {
   users: User[];
@@ -19,7 +75,7 @@ interface CustomerPanelProps {
   currentCustomer: User;
   parameters: SystemParameters;
   npsFeedbacks?: NPSFeedback[];
-  coupons?: any[];
+  coupons?: DiscountCoupon[];
   creditTransactions?: any[];
   onUpdateState: (key: string, val: any) => void;
   isGuestMode?: boolean;
@@ -36,12 +92,19 @@ export default function CustomerPanel({
   currentCustomer,
   parameters,
   npsFeedbacks = [],
+  coupons = [],
+  creditTransactions = [],
   onUpdateState,
   isGuestMode = false,
   onOpenLoginModal
 }: CustomerPanelProps) {
+  const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
+
   const [activeTab, setActiveTab] = useState<'agendar' | 'assinatura' | 'historico'>('agendar');
-  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(() => {
+    const draft = getSavedGuestBookingDraft(services, users.filter(u => u.role === 'BARBER' && u.isActive));
+    return draft ? draft.step : 1;
+  });
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('customerPanelTheme') === 'dark';
   });
@@ -118,18 +181,113 @@ export default function CustomerPanel({
   const [serviceSearch, setServiceSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
 
-  // New Booking State (supports multiple service selection)
-  const barbers = users.filter(u => u.role === 'BARBER' && u.isActive);
-  const [bookingServiceIds, setBookingServiceIds] = useState<string[]>(() => services[0] ? [services[0].id] : []);
-  const [bookingBarberId, setBookingBarberId] = useState(barbers[0]?.id || '');
+  // New Booking State (supports multiple service selection & guest draft preservation)
+  const [bookingServiceIds, setBookingServiceIds] = useState<string[]>(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (draft && draft.serviceIds.length > 0) return draft.serviceIds;
+    return services[0] ? [services[0].id] : [];
+  });
+  const [bookingBarberId, setBookingBarberId] = useState(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (draft && draft.barberId) return draft.barberId;
+    return barbers[0]?.id || '';
+  });
   const [bookingDate, setBookingDate] = useState(() => {
     const today = new Date();
     const padDay = today.getDate().toString().padStart(2, '0');
     const padMonth = (today.getMonth() + 1).toString().padStart(2, '0');
-    return `${today.getFullYear()}-${padMonth}-${padDay}`;
+    const todayStr = `${today.getFullYear()}-${padMonth}-${padDay}`;
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (draft && draft.date) return draft.date;
+    return todayStr;
   });
-  const [bookingTime, setBookingTime] = useState('');
-  const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
+  const [bookingTime, setBookingTime] = useState(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    return draft?.time || '';
+  });
+  const [currentMonthDate, setCurrentMonthDate] = useState(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (draft && draft.date) {
+      const d = new Date(draft.date + 'T12:00:00');
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
+
+  // Scheduling Coupon Discount State
+  const [couponCodeInput, setCouponCodeInput] = useState(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    return draft?.couponCode || '';
+  });
+  const [appliedCoupon, setAppliedCoupon] = useState<DiscountCoupon | null>(() => {
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (draft?.couponCode && coupons.length > 0) {
+      const found = coupons.find(c => c.code.trim().toUpperCase() === draft.couponCode?.trim().toUpperCase() && c.isActive);
+      return found || null;
+    }
+    return null;
+  });
+  const [couponValidationMessage, setCouponValidationMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // State to notify customer when a draft was restored after login
+  const [restoredDraftInfo, setRestoredDraftInfo] = useState<{
+    serviceCount: number;
+    step: 1 | 2 | 3;
+    barberName?: string;
+    date?: string;
+    time?: string;
+  } | null>(() => {
+    if (isGuestMode) return null;
+    const draft = getSavedGuestBookingDraft(services, barbers);
+    if (!draft) return null;
+    const b = barbers.find(u => u.id === draft.barberId);
+    return {
+      serviceCount: draft.serviceIds.length,
+      step: draft.step,
+      barberName: b?.name,
+      date: draft.date,
+      time: draft.time
+    };
+  });
+
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem(GUEST_DRAFT_KEY);
+    } catch {}
+    setRestoredDraftInfo(null);
+    setBookingStep(1);
+    setBookingServiceIds(services[0] ? [services[0].id] : []);
+    setBookingBarberId(barbers[0]?.id || '');
+    const today = new Date();
+    const padDay = today.getDate().toString().padStart(2, '0');
+    const padMonth = (today.getMonth() + 1).toString().padStart(2, '0');
+    setBookingDate(`${today.getFullYear()}-${padMonth}-${padDay}`);
+    setCurrentMonthDate(new Date());
+    setBookingTime('');
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponValidationMessage(null);
+  };
+
+  // Auto-sync guest draft to localStorage as visitor makes selections
+  useEffect(() => {
+    if (isGuestMode && bookingServiceIds.length > 0) {
+      try {
+        const draft: GuestBookingDraft = {
+          serviceIds: bookingServiceIds,
+          barberId: bookingBarberId,
+          date: bookingDate,
+          time: bookingTime,
+          step: bookingStep,
+          couponCode: appliedCoupon?.code || couponCodeInput || undefined,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify(draft));
+      } catch (err) {
+        console.warn('Error saving guest booking draft:', err);
+      }
+    }
+  }, [isGuestMode, bookingServiceIds, bookingBarberId, bookingDate, bookingTime, bookingStep, appliedCoupon, couponCodeInput]);
 
   const toggleBookingServiceId = (srvId: string) => {
     setBookingServiceIds(prev => {
@@ -161,6 +319,144 @@ export default function CustomerPanel({
     : null;
 
   const [useSubscriptionForBooking, setUseSubscriptionForBooking] = useState<boolean>(true);
+
+  // Dynamic discount calculation for applied coupon
+  const couponDiscountAmount = React.useMemo(() => {
+    if (!appliedCoupon) return 0;
+    // If appointment is fully covered by VIP subscription, coupon is not deducted
+    if (useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0) {
+      return 0;
+    }
+    if (appliedCoupon.discountType === 'PERCENTAGE') {
+      const disc = (totalBookingPrice * appliedCoupon.discountValue) / 100;
+      return Math.min(totalBookingPrice, Math.round(disc * 100) / 100);
+    } else {
+      return Math.min(totalBookingPrice, appliedCoupon.discountValue);
+    }
+  }, [appliedCoupon, totalBookingPrice, useSubscriptionForBooking, activeSubscription]);
+
+  const finalBookingPrice = Math.max(0, totalBookingPrice - couponDiscountAmount);
+
+  // Auto-validate and detach coupon if total services amount drops below coupon's minPurchaseAmount
+  useEffect(() => {
+    if (appliedCoupon && appliedCoupon.minPurchaseAmount && totalBookingPrice < appliedCoupon.minPurchaseAmount) {
+      const minVal = appliedCoupon.minPurchaseAmount;
+      const code = appliedCoupon.code;
+      setAppliedCoupon(null);
+      setCouponValidationMessage({
+        type: 'error',
+        text: `O cupom "${code}" exige valor mínimo de ${formatCurrency(minVal)} e foi removido (subtotal atual: ${formatCurrency(totalBookingPrice)}).`
+      });
+    }
+  }, [totalBookingPrice, appliedCoupon]);
+
+  // Coupon Validation and Application Handler
+  const handleApplyCoupon = (codeToTest?: string) => {
+    if (parameters.enableCoupons === false) {
+      setCouponValidationMessage({ type: 'error', text: 'O uso de cupons de desconto está desabilitado nas configurações da barbearia.' });
+      return;
+    }
+
+    const code = (codeToTest || couponCodeInput).trim().toUpperCase();
+    if (!code) {
+      setCouponValidationMessage({ type: 'error', text: 'Por favor, digite o código do cupom promocional.' });
+      return;
+    }
+
+    const foundCoupon = coupons.find(c => c.code.trim().toUpperCase() === code);
+    if (!foundCoupon) {
+      setCouponValidationMessage({ type: 'error', text: `Cupom "${code}" não encontrado ou inexistente.` });
+      return;
+    }
+
+    if (!foundCoupon.isActive) {
+      setCouponValidationMessage({ type: 'error', text: `O cupom "${foundCoupon.code}" não está mais ativo.` });
+      return;
+    }
+
+    // Expiration date validation (YYYY-MM-DD)
+    if (foundCoupon.validUntil) {
+      const today = new Date().toISOString().split('T')[0];
+      const checkDate = bookingDate || today;
+      if (checkDate > foundCoupon.validUntil) {
+        const [y, m, d] = foundCoupon.validUntil.split('-');
+        setCouponValidationMessage({
+          type: 'error',
+          text: `O cupom "${foundCoupon.code}" expirou em ${d}/${m}/${y}.`
+        });
+        return;
+      }
+    }
+
+    // Maximum total uses validation
+    if (foundCoupon.maxUsesTotal && (foundCoupon.timesUsed || 0) >= foundCoupon.maxUsesTotal) {
+      setCouponValidationMessage({
+        type: 'error',
+        text: `O cupom "${foundCoupon.code}" atingiu o limite máximo de utilizações (${foundCoupon.maxUsesTotal}x).`
+      });
+      return;
+    }
+
+    // Maximum uses per customer validation
+    if (foundCoupon.maxUsesPerCustomer && currentCustomer.id) {
+      const timesInUsedBy = (foundCoupon.usedBy || []).filter(u => u.customerId === currentCustomer.id).length;
+      const timesInAppointments = appointments.filter(
+        a => a.customerId === currentCustomer.id && a.appliedCouponCode === foundCoupon.code && a.status !== 'CANCELLED'
+      ).length;
+      const timesInComandas = comandas.filter(
+        c => c.customerId === currentCustomer.id && c.appliedCouponCode === foundCoupon.code && c.status !== 'CANCELLED'
+      ).length;
+
+      const totalCustomerUses = Math.max(timesInUsedBy, timesInAppointments, timesInComandas);
+
+      if (totalCustomerUses >= foundCoupon.maxUsesPerCustomer) {
+        setCouponValidationMessage({
+          type: 'error',
+          text: `Você já atingiu o limite de ${foundCoupon.maxUsesPerCustomer} uso(s) deste cupom.`
+        });
+        return;
+      }
+    }
+
+    // Minimum purchase amount check
+    if (foundCoupon.minPurchaseAmount && totalBookingPrice < foundCoupon.minPurchaseAmount) {
+      setCouponValidationMessage({
+        type: 'error',
+        text: `Este cupom exige valor mínimo de ${formatCurrency(foundCoupon.minPurchaseAmount)} em serviços. (Seu total atual: ${formatCurrency(totalBookingPrice)}). Adicione mais serviços para liberar o desconto.`
+      });
+      return;
+    }
+
+    // Notice if covered by subscription
+    if (useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0) {
+      setCouponValidationMessage({
+        type: 'error',
+        text: 'Seu agendamento está selecionado para ser coberto pela Assinatura VIP. O cupom só pode ser aplicado em pagamentos avulsos.'
+      });
+      return;
+    }
+
+    // Everything is valid - calculate preview discount
+    let calcDiscount = 0;
+    if (foundCoupon.discountType === 'PERCENTAGE') {
+      calcDiscount = Math.round(((totalBookingPrice * foundCoupon.discountValue) / 100) * 100) / 100;
+    } else {
+      calcDiscount = Math.min(totalBookingPrice, foundCoupon.discountValue);
+    }
+
+    setAppliedCoupon(foundCoupon);
+    setCouponCodeInput(foundCoupon.code);
+    setCouponValidationMessage({
+      type: 'success',
+      text: `Cupom "${foundCoupon.code}" validado com sucesso! Desconto de ${foundCoupon.discountType === 'PERCENTAGE' ? `${foundCoupon.discountValue}% (- ${formatCurrency(calcDiscount)})` : formatCurrency(calcDiscount)} liberado.`
+    });
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponValidationMessage(null);
+  };
 
   // Subscription view toggle: 'plans' (planos prontos cadastrados) ou 'custom' (monte seu pacote)
   const isQuantityDiscountEnabled: boolean = parameters.enableQuantitySubscriptionDiscount !== false;
@@ -416,6 +712,22 @@ export default function CustomerPanel({
     e.preventDefault();
 
     if (isGuestMode) {
+      // Explicitly preserve current booking selections into draft so user continues where they left off
+      try {
+        const draft: GuestBookingDraft = {
+          serviceIds: bookingServiceIds,
+          barberId: bookingBarberId,
+          date: bookingDate,
+          time: bookingTime,
+          step: 3,
+          couponCode: appliedCoupon?.code || couponCodeInput || undefined,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify(draft));
+      } catch (err) {
+        console.warn('Error saving guest draft on login prompt:', err);
+      }
+
       if (onOpenLoginModal) onOpenLoginModal();
       else alert('Por favor, faça login ou cadastre-se para concluir seu agendamento.');
       return;
@@ -489,6 +801,24 @@ export default function CustomerPanel({
       }
     }
 
+    // Re-verify coupon validity right before saving
+    let couponDiscount = 0;
+    let finalPrice = combinedPrice;
+    let validCouponToApply: DiscountCoupon | null = null;
+
+    if (appliedCoupon && !isSub) {
+      const currentCoupon = coupons.find(c => c.id === appliedCoupon.id);
+      if (currentCoupon && currentCoupon.isActive) {
+        if (currentCoupon.discountType === 'PERCENTAGE') {
+          couponDiscount = Math.round(((combinedPrice * currentCoupon.discountValue) / 100) * 100) / 100;
+        } else {
+          couponDiscount = Math.min(combinedPrice, currentCoupon.discountValue);
+        }
+        finalPrice = Math.max(0, combinedPrice - couponDiscount);
+        validCouponToApply = currentCoupon;
+      }
+    }
+
     const newAppointment: Appointment = {
       id: `apt-${Date.now()}`,
       customerId: currentCustomer.id,
@@ -505,13 +835,43 @@ export default function CustomerPanel({
       createdBy: currentCustomer.name || 'Cliente (Portal Online)',
       isSubscriptionUse: isSub,
       subscriptionId: isSub ? activeSubscription?.id : undefined,
+      appliedCouponCode: validCouponToApply ? validCouponToApply.code : undefined,
+      discountAmount: validCouponToApply ? couponDiscount : undefined,
+      finalPrice: validCouponToApply ? finalPrice : combinedPrice,
       notes: isSub
         ? `[ASSINATURA] Agendamento do Clube VIP - ${combinedServiceName}`
-        : (selectedBookingServices.length > 1 ? `[MÚLTIPLOS SERVIÇOS]: ${combinedServiceName} (Duração est.: ${totalBookingDuration} min)` : undefined)
+        : [
+            selectedBookingServices.length > 1 ? `[MÚLTIPLOS SERVIÇOS]: ${combinedServiceName} (Duração est.: ${totalBookingDuration} min)` : '',
+            validCouponToApply ? `[CUPOM APLICADO: ${validCouponToApply.code}] Desconto de ${formatCurrency(couponDiscount)} (Total Final: ${formatCurrency(finalPrice)})` : ''
+          ].filter(Boolean).join(' | ') || undefined
     };
 
     onUpdateState('appointments', [...appointments, newAppointment]);
     playAppointmentScheduledSound();
+
+    // If coupon was successfully applied, record usage on the coupon object
+    if (validCouponToApply) {
+      const updatedCoupons = coupons.map(c => {
+        if (c.id === validCouponToApply!.id) {
+          const newUsedBy = [
+            ...(c.usedBy || []),
+            {
+              customerId: currentCustomer.id,
+              customerName: currentCustomer.name,
+              date: new Date().toISOString(),
+              appointmentId: newAppointment.id
+            }
+          ];
+          return {
+            ...c,
+            timesUsed: (c.timesUsed || 0) + 1,
+            usedBy: newUsedBy
+          };
+        }
+        return c;
+      });
+      onUpdateState('coupons', updatedCoupons);
+    }
 
     if (isSub && activeSubscription) {
       const isUnlimitedPlan = activeSubscribedPlan?.isUnlimited === true || activeSubscription.servicesRemaining >= 900;
@@ -529,9 +889,22 @@ export default function CustomerPanel({
         onUpdateState('subscriptions', updatedSubscriptions);
       }
       alert(`Agendamento de "${combinedServiceName}" efetuado com sucesso via Assinatura VIP na cadeira de ${selectedBarber.name}!`);
+    } else if (validCouponToApply) {
+      alert(`Seu agendamento de "${combinedServiceName}" foi confirmado na cadeira de ${selectedBarber.name}!\n\n🎟️ Cupom ${validCouponToApply.code} aplicado com sucesso:\n• Desconto: - ${formatCurrency(couponDiscount)}\n• Valor final a acertar: ${formatCurrency(finalPrice)}`);
     } else {
       alert(`Seu agendamento de "${combinedServiceName}" foi efetuado com sucesso na cadeira de ${selectedBarber.name}!`);
     }
+
+    // Clear draft from localStorage and state
+    try {
+      localStorage.removeItem(GUEST_DRAFT_KEY);
+    } catch {}
+    setRestoredDraftInfo(null);
+
+    // Reset booking & coupon states
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponValidationMessage(null);
     setBookingTime('');
     setBookingStep(1);
     handleNavigateTab('historico', 'secao-reservas');
@@ -539,6 +912,7 @@ export default function CustomerPanel({
 
   const handleCancelMyAppointment = (aptId: string) => {
     const reason = prompt('Informe o motivo do cancelamento (opcional):');
+    const aptToCancel = appointments.find(a => a.id === aptId);
     const updated = appointments.map(a => {
       if (a.id === aptId) {
         return {
@@ -552,6 +926,23 @@ export default function CustomerPanel({
       return a;
     });
     onUpdateState('appointments', updated);
+
+    // Rollback coupon usage if cancelled appointment had a coupon applied
+    if (aptToCancel && aptToCancel.appliedCouponCode && coupons.length > 0) {
+      const updatedCoupons = coupons.map(c => {
+        if (c.code === aptToCancel.appliedCouponCode) {
+          const filteredUsedBy = (c.usedBy || []).filter(u => u.appointmentId !== aptId);
+          return {
+            ...c,
+            timesUsed: Math.max(0, (c.timesUsed || 1) - 1),
+            usedBy: filteredUsedBy
+          };
+        }
+        return c;
+      });
+      onUpdateState('coupons', updatedCoupons);
+    }
+
     alert('Seu agendamento foi cancelado.');
   };
 
@@ -966,6 +1357,63 @@ export default function CustomerPanel({
         </div>
       )}
 
+      {/* Restored Draft Notice Banner */}
+      {restoredDraftInfo && (
+        <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4 shadow-md transition-all ${
+          isDarkMode ? 'bg-amber-950/40 border-amber-500/50 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-950'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+            </div>
+            <div className="space-y-1 text-left">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-xs uppercase tracking-wider font-mono text-amber-600 dark:text-amber-400">
+                  Agendamento em andamento restaurado!
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black font-mono">
+                  Etapa {bookingStep} de 3
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 dark:text-slate-200">
+                Olá, <strong>{currentCustomer.name}</strong>! Seus serviços e horários selecionados antes do login foram restaurados com sucesso.
+              </p>
+              <div className="text-[11px] font-mono text-slate-600 dark:text-slate-300 flex items-center gap-2 flex-wrap pt-0.5">
+                <span>✂️ {selectedBookingServices.map(s => s.name).join(' + ') || `${restoredDraftInfo.serviceCount} serviço(s)`}</span>
+                {restoredDraftInfo.barberName && <span>• 🧔 {restoredDraftInfo.barberName}</span>}
+                {restoredDraftInfo.date && <span>• 📅 {restoredDraftInfo.date.split('-').reverse().join('/')}</span>}
+                {restoredDraftInfo.time && <span>• ⏰ {restoredDraftInfo.time}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end md:self-center shrink-0 w-full md:w-auto justify-end pt-1 md:pt-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('agendar');
+                setTimeout(() => {
+                  document.getElementById('secao-agendamento')?.scrollIntoView({ behavior: 'smooth' });
+                }, 50);
+                setRestoredDraftInfo(null);
+              }}
+              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl transition cursor-pointer shadow-sm font-mono flex items-center gap-1.5"
+            >
+              <span>Continuar Agendamento</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="px-3 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs rounded-xl transition cursor-pointer font-mono flex items-center gap-1"
+              title="Descartar este rascunho e recomeçar"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Descartar</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Tab Switcher */}
       {(() => {
         const portalTabs = [
@@ -1317,7 +1765,15 @@ export default function CustomerPanel({
                     {selectedBookingServices.map(s => s.name).join(', ') || 'Nenhum selecionado'}
                   </span>
                   <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 ml-2">
-                    • Total: {formatCurrency(totalBookingPrice)} ({totalBookingDuration} min)
+                    • Total: {appliedCoupon && couponDiscountAmount > 0 ? (
+                      <>
+                        <span className="line-through text-slate-400 mr-1">{formatCurrency(totalBookingPrice)}</span>
+                        <span className="text-emerald-500 font-black">{formatCurrency(finalBookingPrice)}</span>
+                        <span className="text-[10px] text-emerald-400 ml-1 font-mono">({appliedCoupon.code} aplicado)</span>
+                      </>
+                    ) : (
+                      formatCurrency(totalBookingPrice)
+                    )} ({totalBookingDuration} min)
                   </span>
                 </div>
 
@@ -1647,6 +2103,139 @@ export default function CustomerPanel({
                     })()}
                   </div>
 
+                  {/* Coupon Validation and Application Section */}
+                  {parameters.enableCoupons !== false && (
+                    <div className={`p-4 rounded-2xl border space-y-3 text-xs font-mono transition-all ${
+                      isDarkMode ? 'bg-slate-800/60 border-slate-700 text-slate-200' : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                            <Ticket className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400">Cupom de Desconto</h4>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">Digite seu código promocional para validar e abater do valor</p>
+                          </div>
+                        </div>
+                        {appliedCoupon && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-[10px] font-bold">
+                            Ativo
+                          </span>
+                        )}
+                      </div>
+
+                      {!appliedCoupon ? (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <input
+                                type="text"
+                                value={couponCodeInput}
+                                onChange={(e) => {
+                                  setCouponCodeInput(e.target.value.toUpperCase());
+                                  if (couponValidationMessage) setCouponValidationMessage(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleApplyCoupon();
+                                  }
+                                }}
+                                placeholder="Ex: BEMVINDO10, PRIMEIRA20"
+                                className={`w-full uppercase font-mono text-xs px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-amber-500 transition ${
+                                  isDarkMode ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                                }`}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCoupon()}
+                              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold text-xs uppercase rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0"
+                            >
+                              <Ticket className="w-3.5 h-3.5" />
+                              <span>Aplicar</span>
+                            </button>
+                          </div>
+
+                          {/* Quick Suggestion Chips if active coupons exist */}
+                          {(() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            const availableCoupons = coupons.filter(c => c.isActive && (!c.validUntil || c.validUntil >= today));
+                            if (availableCoupons.length === 0) return null;
+                            return (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                <span className="text-[10px] text-slate-400 font-medium">Cupons ativos:</span>
+                                {availableCoupons.slice(0, 3).map(c => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setCouponCodeInput(c.code);
+                                      handleApplyCoupon(c.code);
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 text-[10px] font-bold font-mono transition cursor-pointer"
+                                    title={c.description || `${c.discountType === 'PERCENTAGE' ? `${c.discountValue}%` : `R$ ${c.discountValue}`} de desconto`}
+                                  >
+                                    {c.code} ({c.discountType === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `${formatCurrency(c.discountValue)} OFF`})
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                          isDarkMode ? 'bg-emerald-950/30 border-emerald-800/60' : 'bg-emerald-50/90 border-emerald-300'
+                        }`}>
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-300 font-mono tracking-wider">
+                                  CUPOM: {appliedCoupon.code}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500 text-slate-950 font-black">
+                                  {appliedCoupon.discountType === 'PERCENTAGE' ? `${appliedCoupon.discountValue}% OFF` : `${formatCurrency(appliedCoupon.discountValue)} OFF`}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                Desconto de {formatCurrency(couponDiscountAmount)} liberado no agendamento.
+                                {appliedCoupon.description ? ` (${appliedCoupon.description})` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoupon}
+                            className="self-end sm:self-center px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800/80 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-600 dark:text-red-400 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remover</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Inline Validation Feedback */}
+                      {couponValidationMessage && (
+                        <div className={`p-2.5 rounded-xl border flex items-start gap-2 text-[11px] font-sans ${
+                          couponValidationMessage.type === 'success'
+                            ? isDarkMode ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : isDarkMode ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-700'
+                        }`}>
+                          {couponValidationMessage.type === 'success' ? (
+                            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                          )}
+                          <span className="leading-tight">{couponValidationMessage.text}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Booking Confirmation Box */}
                   {(() => {
                     const selectedBarber = barbers.find(b => b.id === bookingBarberId);
@@ -1655,15 +2244,39 @@ export default function CustomerPanel({
                         isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-200' : 'bg-amber-50/60 border-amber-200 text-slate-800'
                       }`}>
                         <h4 className="font-bold uppercase text-[11px] text-amber-600 dark:text-amber-400 border-b border-amber-200/50 dark:border-slate-700 pb-1">Resumo do Agendamento:</h4>
-                        <div className="space-y-1 text-[11px]">
+                        <div className="space-y-1.5 text-[11px]">
                           <p>✂️ <strong>Serviços:</strong> {selectedBookingServices.map(s => s.name).join(' + ') || '-'}</p>
                           <p>🧔 <strong>Profissional:</strong> {selectedBarber?.name || '-'}</p>
                           <p>📅 <strong>Data:</strong> {bookingDate ? bookingDate.split('-').reverse().join('/') : '-'}</p>
                           <p>⏰ <strong>Horário:</strong> {bookingTime || 'Não selecionado'}</p>
-                          <p className="pt-1 text-xs font-extrabold text-amber-700 dark:text-amber-300">
-                            💰 Valor Total: {formatCurrency(totalBookingPrice)}
-                            {useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0 ? ' (Cobrado no Pacote VIP)' : ''}
-                          </p>
+
+                          <div className="pt-2 mt-2 border-t border-amber-200/60 dark:border-slate-700 space-y-1">
+                            <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
+                              <span>Subtotal dos Serviços:</span>
+                              <span className={appliedCoupon && couponDiscountAmount > 0 ? 'line-through text-slate-400' : 'font-bold'}>
+                                {formatCurrency(totalBookingPrice)}
+                              </span>
+                            </div>
+
+                            {appliedCoupon && couponDiscountAmount > 0 && (
+                              <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-bold">
+                                <span className="flex items-center gap-1">
+                                  <Ticket className="w-3.5 h-3.5" />
+                                  Desconto do Cupom ({appliedCoupon.code}):
+                                </span>
+                                <span>- {formatCurrency(couponDiscountAmount)}</span>
+                              </div>
+                            )}
+
+                            <div className="flex justify-between items-center pt-1 text-xs font-black text-amber-700 dark:text-amber-300">
+                              <span>💰 Total a Pagar:</span>
+                              <span className="text-sm">
+                                {useSubscriptionForBooking && activeSubscription && activeSubscription.servicesRemaining > 0
+                                  ? `${formatCurrency(0)} (Cobrado no Pacote VIP)`
+                                  : formatCurrency(finalBookingPrice)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1695,9 +2308,25 @@ export default function CustomerPanel({
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                   }`}
                 >
-                  <span>✨ Confirmar Agendamento</span>
+                  {isGuestMode ? (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      <span>Finalizar Agendamento (Entrar / Cadastrar)</span>
+                    </>
+                  ) : (
+                    <span>✨ Confirmar Agendamento</span>
+                  )}
                 </button>
               </div>
+
+              {isGuestMode && (
+                <div className="w-full text-center sm:text-right pt-2">
+                  <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>Seu agendamento será salvo na memória para você concluir logo após o login!</span>
+                  </p>
+                </div>
+              )}
             </form>
           )}
         </div>
@@ -2177,6 +2806,19 @@ export default function CustomerPanel({
                                 🔄 Via Assinatura VIP
                               </span>
                             )}
+                            {apt.appliedCouponCode && (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 text-[10px] font-mono font-bold">
+                                  🎟️ {apt.appliedCouponCode}
+                                  {apt.discountAmount ? ` (- ${formatCurrency(apt.discountAmount)})` : ''}
+                                </span>
+                                {apt.finalPrice !== undefined && (
+                                  <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                    Total: {formatCurrency(apt.finalPrice)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">{apt.barberName}</td>
                           <td className="p-3">{apt.date}</td>
@@ -2194,14 +2836,28 @@ export default function CustomerPanel({
                             </span>
                           </td>
                           <td className="p-3 text-right">
-                            {apt.status === 'SCHEDULED' && (
-                              <button
-                                onClick={() => handleCancelMyAppointment(apt.id)}
-                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[10px] font-bold cursor-pointer transition"
-                              >
-                                Cancelar
-                              </button>
-                            )}
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {apt.status === 'COMPLETED' && (
+                                <a
+                                  href={getGoogle5StarReviewUrl(parameters)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 dark:text-amber-400 border border-amber-500/40 rounded-lg text-[10px] font-bold font-mono inline-flex items-center gap-1 transition"
+                                  title="Avaliar no Google com 5 Estrelas"
+                                >
+                                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                  <span>Avaliar 5★</span>
+                                </a>
+                              )}
+                              {apt.status === 'SCHEDULED' && (
+                                <button
+                                  onClick={() => handleCancelMyAppointment(apt.id)}
+                                  className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[10px] font-bold cursor-pointer transition"
+                                >
+                                  Cancelar
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2252,6 +2908,32 @@ export default function CustomerPanel({
                       </span>
                     )}
 
+                    {apt.appliedCouponCode && (
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs font-mono">
+                        <span className="text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
+                          <Ticket className="w-3.5 h-3.5" />
+                          Cupom {apt.appliedCouponCode}
+                        </span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                          {apt.finalPrice !== undefined ? formatCurrency(apt.finalPrice) : ''}
+                          {apt.discountAmount ? ` (- ${formatCurrency(apt.discountAmount)})` : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    {apt.status === 'COMPLETED' && (
+                      <a
+                        href={getGoogle5StarReviewUrl(parameters)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/40 rounded-xl text-xs font-bold font-mono transition flex items-center justify-center gap-1.5 shadow-xs"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                        <span>Avaliar Atendimento no Google (5★)</span>
+                        <ExternalLink className="w-3 h-3 opacity-80" />
+                      </a>
+                    )}
+
                     {apt.status === 'SCHEDULED' && (
                       <button
                         onClick={() => handleCancelMyAppointment(apt.id)}
@@ -2286,9 +2968,40 @@ export default function CustomerPanel({
           </div>
 
           {npsSubmitted ? (
-            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 text-xs font-mono font-bold flex items-center gap-2">
-              <Check className="w-5 h-5 text-emerald-600" />
-              Sua avaliação foi enviada com sucesso! Agradecemos o seu feedback para continuarmos melhorando.
+            <div className="space-y-3">
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 text-xs font-mono font-bold flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>Sua avaliação foi enviada com sucesso! Agradecemos o seu feedback para continuarmos melhorando.</span>
+              </div>
+
+              {/* Redirecionamento 5 Estrelas no Google pós NPS */}
+              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                isDarkMode ? 'bg-amber-950/30 border-amber-500/40 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-950'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="flex text-amber-400">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    ))}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold font-mono">Que tal compartilhar sua experiência no Google?</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                      O link abaixo já abre com as <strong>5 estrelas</strong> prontas para você enviar!
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href={getGoogle5StarReviewUrl(parameters)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition shrink-0 cursor-pointer font-mono"
+                >
+                  <Star className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Avaliar com 5★ no Google</span>
+                  <ExternalLink className="w-3 h-3 opacity-80" />
+                </a>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSendNPSFeedback} className="space-y-4">
@@ -2383,6 +3096,58 @@ export default function CustomerPanel({
         </div>
       )}
 
+      {/* GOOGLE REVIEWS 5-STAR CALLOUT CARD */}
+      {parameters.portalShowGoogleReviews !== false && (
+        <div className={`p-5 sm:p-6 rounded-2xl border shadow-sm text-left relative overflow-hidden transition-all ${
+          isDarkMode
+            ? 'bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border-amber-500/40 text-slate-100'
+            : 'bg-gradient-to-r from-amber-50/80 via-white to-amber-100/40 border-amber-300 text-slate-900'
+        }`}>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5 max-w-2xl">
+              {/* Google Star Badge */}
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-500 flex items-center justify-center shrink-0 shadow-xs">
+                <Star className="w-6 h-6 fill-amber-500 text-amber-500" />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black font-mono uppercase px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 tracking-wider">
+                    Google Maps
+                  </span>
+                  <div className="flex items-center gap-0.5 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    ))}
+                    <span className="text-xs font-black font-mono ml-1 text-amber-600 dark:text-amber-400">5.0</span>
+                  </div>
+                </div>
+
+                <h3 className={`text-sm sm:text-base font-extrabold font-mono ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {parameters.googleReviewCalloutTitle || 'Gostou do nosso atendimento? Avalie-nos no Google!'}
+                </h3>
+                <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  {parameters.googleReviewCalloutText || 'Sua opinião é fundamental para nosso crescimento. O link abaixo já abre diretamente com 5 estrelas selecionadas para você avaliar em segundos.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="self-stretch sm:self-auto flex flex-col sm:flex-row items-center gap-2 shrink-0">
+              <a
+                href={getGoogle5StarReviewUrl(parameters)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-5 py-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer font-mono"
+              >
+                <Star className="w-4 h-4 fill-slate-950" />
+                <span>Avaliar 5 Estrelas no Google</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* LOCALIZAÇÃO (GOOGLE MAPS) E REDES SOCIAIS */}
       {parameters.portalShowContactFooter !== false && (
       <>
@@ -2399,22 +3164,50 @@ export default function CustomerPanel({
             <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>{parameters.address || 'Endereço da Barbearia'}</p>
           </div>
 
-          <a
-            href={parameters.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parameters.address || parameters.shopName)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-xs transition cursor-pointer shrink-0"
-          >
-            <MapPin className="w-4 h-4" />
-            <span>Abrir no Google Maps</span>
-            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-          </a>
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <a
+              href={getGoogle5StarReviewUrl(parameters)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-xs transition cursor-pointer shrink-0 font-mono"
+            >
+              <Star className="w-4 h-4 fill-slate-950" />
+              <span>Avaliar no Google (5★)</span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </a>
+
+            <a
+              href={parameters.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parameters.address || parameters.shopName)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`px-4 py-2 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-xs transition cursor-pointer shrink-0 font-mono border ${
+                isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+              }`}
+            >
+              <MapPin className="w-4 h-4 text-amber-500" />
+              <span>Abrir Mapa</span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </a>
+          </div>
         </div>
 
         {/* REDES SOCIAIS */}
         <div className="pt-1">
           <span className={`text-xs font-mono font-bold uppercase block mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Redes Sociais & Contato:</span>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <a
+              href={getGoogle5StarReviewUrl(parameters)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`h-10 px-3 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-2 transition border ${
+                isDarkMode
+                  ? 'bg-amber-950/40 text-amber-300 border-amber-800/80 hover:bg-amber-900/40'
+                  : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              <Star className="w-4 h-4 fill-amber-500 text-amber-500 shrink-0" />
+              <span>Google Reviews (5★)</span>
+            </a>
             {parameters.whatsappUrl && (
               <a
                 href={parameters.whatsappUrl}
